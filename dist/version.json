@@ -1,0 +1,8 @@
+{
+ "version": "2026.10.19.1629",
+ "sha256": {
+  "spider-diagram-linux": "759ea3e3eaea5f7fe44729e421afbee3e86adccf3808598d170c3cf135afc2ef",
+  "spider-diagram-windows.cmd": "2be61e54759d7af8917666e5b6de531cf609deec1fa8b3739535b83b18dffd40",
+  "spider-diagram-chromeos.html": "b870fcdf9a418057442cb2a22e784799b932e176a336c20c50fd83834da9cfff"
+ }
+}
