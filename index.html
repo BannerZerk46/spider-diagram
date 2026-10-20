@@ -124,6 +124,11 @@
   #tutExtra { display: flex; gap: 6px; }
   .tut-glow { outline: 2px solid var(--accent) !important; outline-offset: 2px; animation: tutGlow 1.4s ease-in-out infinite; }
   @keyframes tutGlow { 50% { outline-color: transparent; } }
+  #labelEditor {
+    position: absolute; z-index: 2; transform: translate(-50%, -50%); width: 200px; padding: 4px 10px; text-align: center;
+    font: 600 13px inherit; font-family: inherit; color: var(--editor-ink); background: var(--editor);
+    border: 2px solid var(--accent); border-radius: 999px; outline: none; box-shadow: var(--menu-shadow);
+  }
   #updateBar {
     position: absolute; top: 12px; left: 50%; transform: translateX(-50%); z-index: 4; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px;
     padding: 7px 8px 7px 14px; border-radius: 10px; background: var(--panel); color: var(--ink); border: 1px solid var(--line);
@@ -386,6 +391,7 @@
           <div class="menu-row">
             <button id="lineBranch" title="Give every line in this branch the same look">Apply to whole branch</button>
             <button id="lineReset" title="Back to the normal look">Reset</button>
+            <button id="lineLabel" title="Write a short label on this link, e.g. &quot;worked for&quot; (or double-click the link)">Label…</button>
             <button id="lineDelete" title="Delete this link (Delete)"><svg class="ic" aria-hidden="true"><use href="#i-trash"/></svg> Delete link</button>
           </div>
           <p class="menu-note" id="lineNote"></p>
@@ -424,6 +430,7 @@
 <div id="stage">
   <svg id="canvas"><g id="world"></g><g id="overlay"></g></svg>
   <textarea id="editor" hidden spellcheck="false" placeholder="Type an idea…"></textarea>
+  <input id="labelEditor" hidden spellcheck="false" maxlength="120" placeholder="Label this link…">
   <div id="hints" class="collapsed">
     <button id="hintToggle" title="Show or hide keyboard shortcuts"><svg class="ic" aria-hidden="true"><use href="#i-keyboard"/></svg> Shortcuts</button>
     <span><kbd>Tab</kbd> add branch</span>
@@ -436,6 +443,7 @@
     <span>Paste or drop an image onto a bubble</span>
     <span>Drag to move (<kbd>Shift</kbd>: single idea) · drop onto another idea to re-attach</span>
     <span>Drag the link handle on a selected bubble (or <kbd>Alt</kbd>+drag) to another bubble to link them</span>
+    <span>Double-click a link (or select it and type) to label it</span>
     <span>Double-click empty space to add a branch there (nothing selected: a free bubble) · scroll to zoom · drag background to pan</span>
   </div>
   <div id="toast"></div>
@@ -850,10 +858,12 @@ const ROOT_FILL = '#2b2d42';
 const STORE = 'spider-diagram:v1';
 const IMG_SIZES = { S: 70, M: 120, L: 200, XL: 300 };
 const FORMAT = 'spider-diagram';
-const FILE_VERSION = 3;   // bump this (and add a step to MIGRATIONS) whenever the saved structure changes
+const FILE_VERSION = 4;   // bump this (and add a step to MIGRATIONS) whenever the saved structure changes
 
 let selLink = null;   // a selected link (instead of a bubble)
 let linkCurves = [];   // the links' routed curves from the latest drawing (for Fit and export framing)
+let linkLabels = {};   // link id -> where its label was drawn ({ x, y, w, h }), for framing and editing
+let labelEdit = null;  // the link whose label is being written
 let doc, sel = 0, view = { x: 0, y: 0, k: 1 }, geom = {}, kidCount = {}, hidden = new Set();
 let undoStack = [], redoStack = [], dropTarget = null, drag = null, editing = null, lastDown = { t: 0 };
 let fileHandle = null, fileName = null, dirty = false, storeWarned = false;
@@ -871,6 +881,8 @@ const blank = () => ({ nextId: 1, settings: defaults(), links: {}, nodes: { 0: {
         bubbles; per-line style on bubbles ("line") and on links; an optional "title" (the diagram's
         own name, otherwise it's named after its main ideas). Renaming "nodes" also means older
         copies of the app refuse v3 files instead of opening them and losing what they don't know.
+     4  links can carry a "label" (short text shown on the link). Same shape otherwise; the version
+        goes up so copies that don't know about labels ask to be updated instead of dropping them.
    Inside the app a diagram is always { nextId, settings, nodes, links }; toFile/fromFile translate. */
 class NewerFileError extends Error {}
 const MIGRATIONS = {
@@ -881,6 +893,7 @@ const MIGRATIONS = {
     bubbles: Object.fromEntries(Object.entries(d.nodes || {}).map(([k, n]) =>
       [k, String(k) === '0' ? { ...n, parent: null, kind: 'main' } : n])),
   }),
+  3: d => ({ ...d, version: 4 }),
 };
 function fileVersion(d) { return Number.isInteger(d?.version) ? d.version : d?.nodes ? 1 : 0; }
 function migrate(data) {
@@ -952,7 +965,8 @@ function normalize(d) {
   for (const [key, l] of Object.entries(d?.links || {})) {
     const id = Number(key);
     if (!Number.isInteger(id) || !l || !nodes[l.from] || !nodes[l.to] || l.from === l.to) continue;
-    links[id] = { id, from: l.from, to: l.to, ...cleanLine(l), ...(hex(l.color) ? { color: l.color } : {}) };
+    const label = typeof l.label === 'string' ? l.label.replace(/\s+/g, ' ').trim().slice(0, 120) : '';
+    links[id] = { id, from: l.from, to: l.to, ...cleanLine(l), ...(hex(l.color) ? { color: l.color } : {}), ...(label ? { label } : {}) };
   }
   const maxId = Math.max(...Object.keys(nodes).map(Number), ...Object.keys(links).map(Number));
   const title = typeof d?.title === 'string' ? d.title.replace(/\s+/g, ' ').trim().slice(0, 200) : '';
@@ -1319,16 +1333,29 @@ function scene(ui, theme = appTheme) {
       { ui, hit: `data-edge="${n.id}"` });
   }
   const taken = [];
-  linkCurves = [];
+  linkCurves = []; linkLabels = {};
+  let labels = '';
   for (const l of Object.values(doc.links)) {   // links go over the tree lines, under the bubbles
     const a = visibleOf(l.from), b = visibleOf(l.to);
     if (a === b) continue;
     const others = ns.filter(o => o.id !== a && o.id !== b), curve = routeLink(N(a), N(b), others, taken);
     for (let i = 0; i <= 30; i++) taken.push(bezAt(curve, i / 30));   // later links steer clear of this one
     linkCurves.push(curve);
-    edges += drawLine(N(a), N(b), { ...LINE_DEFAULTS.link, ...cleanLine(l) }, l.color ? T.c(l.color) : T.link, 2.5,
+    const lc = l.color ? T.c(l.color) : T.link;
+    edges += drawLine(N(a), N(b), { ...LINE_DEFAULTS.link, ...cleanLine(l) }, lc, 2.5,
       { link: true, curve, others, ui, hit: `data-link="${l.id}"`, selected: ui && selLink === l.id, selColor: T.sel });
+    // The label sits on the middle of the link, on a little tag that hides the line behind its text.
+    if (l.label && !(ui && labelEdit === l.id)) {
+      const m = bezAt(curve, 0.5), fs = 12, lh = 15;
+      mctx.font = `600 ${fs}px ${FONT}`;
+      const lines = wrapText(l.label, 170), tw = Math.max(...lines.map(t => mctx.measureText(t).width));
+      const w = Math.ceil(tw) + 16, h = lines.length * lh + 8, x = m.x - w / 2, y = m.y - h / 2;
+      linkLabels[l.id] = { x: m.x, y: m.y, w, h };
+      labels += `<g data-link="${l.id}" style="cursor:pointer"><rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${Math.min(h / 2, 10)}" fill="${T.bg}" stroke="${ui && selLink === l.id ? T.sel : lc}" stroke-width="${ui && selLink === l.id ? 2 : 1.2}"/>`
+        + lines.map((t, i) => `<text x="${m.x}" y="${y + 4 + lh * (i + 0.5)}" text-anchor="middle" dominant-baseline="central" font-family="${FONT}" font-size="${fs}" font-weight="600" fill="${lc}">${esc(t)}</text>`).join('') + '</g>';
+    } else if (l.label || (ui && labelEdit === l.id)) linkLabels[l.id] = { ...bezAt(curve, 0.5), w: 0, h: 0 };
   }
+  edges += labels;
   ns.sort((a, b) => geom[b.id].d - geom[a.id].d);
   for (const n of ns) {
     const g = geom[n.id], x = n.x - g.w / 2, y = n.y - g.h / 2, c = T.c(shadeOf(n));
@@ -1826,6 +1853,9 @@ function bbox() {
     x0 = Math.min(x0, n.x - g.w / 2); x1 = Math.max(x1, n.x + g.w / 2);
     y0 = Math.min(y0, n.y - g.h / 2); y1 = Math.max(y1, n.y + g.h / 2);
   }
+  for (const b of Object.values(linkLabels)) {
+    x0 = Math.min(x0, b.x - b.w / 2); x1 = Math.max(x1, b.x + b.w / 2); y0 = Math.min(y0, b.y - b.h / 2); y1 = Math.max(y1, b.y + b.h / 2);
+  }
   for (const P of linkCurves) for (let i = 1; i < 20; i++) {   // a link bowing out wide is part of the picture too
     const q = bezAt(P, i / 20);
     x0 = Math.min(x0, q.x - 6); x1 = Math.max(x1, q.x + 6); y0 = Math.min(y0, q.y - 6); y1 = Math.max(y1, q.y + 6);
@@ -2057,6 +2087,10 @@ document.addEventListener('keydown', e => {
     else if (k === '0') { e.preventDefault(); seen('fit'); fit(); }
     return;
   }
+  if (selLink != null && doc.links[selLink] && (k === 'Enter' || k === 'F2' || (k.length === 1 && k !== ' ' && !e.altKey))) {
+    e.preventDefault();   // a selected link: start writing its label
+    return editLabel(selLink, k.length === 1 ? (doc.links[selLink].label || '') + k : undefined);
+  }
   if (k === 'Tab') { e.preventDefault(); addChild(cur()); }
   else if (k === 'Enter') { e.preventDefault(); addSibling(); }
   else if (k === 'Delete' || k === 'Backspace') { e.preventDefault(); removeSelected(); }
@@ -2249,8 +2283,8 @@ const plainText = n => {
 // its branches are subheadings (h2). Free bubbles get their own section. Every block also lists the
 // bubbles linked to it. "indent" is how far a block sits in a plain-text outline.
 function linkedNames(id) {
-  return Object.values(doc.links).flatMap(l => l.from === id ? [l.to] : l.to === id ? [l.from] : [])
-    .map(o => plainText(N(o)) || 'untitled');
+  return Object.values(doc.links).flatMap(l => l.from === id ? [[l.to, l]] : l.to === id ? [[l.from, l]] : [])
+    .map(([o, l]) => (plainText(N(o)) || 'untitled') + (l.label ? ` (${l.label})` : ''));
 }
 function outlineBlocks() {
   const ms = mains(), multi = ms.length > 1 || !!doc.title, frees = all().filter(isFree), out = [];   // a custom name becomes the title
@@ -2747,6 +2781,7 @@ function syncLineMenu() {
   $('#lineBranch').hidden = t?.kind !== 'tree';
   $('#lineReset').disabled = !t;
   $('#lineDelete').hidden = t?.kind !== 'link';
+  $('#lineLabel').hidden = t?.kind !== 'link';
 }
 function setLine(prop, value) {
   const t = lineTarget();
@@ -3154,7 +3189,7 @@ function ago(t) {
 function thumbnail(file) {
   const key = `${file.path}|${file.mtime}|${appTheme}`;
   if (thumbs.has(key)) return thumbs.get(key);
-  const keep = { doc, geom, kidCount, hidden, linkCurves };
+  const keep = { doc, geom, kidCount, hidden, linkCurves, linkLabels };
   let svgText = '';
   try {
     doc = fromFile(migrate(JSON.parse(JSON.stringify(file.preview))));   // thumbnails of older files are upgraded too
@@ -3163,7 +3198,7 @@ function thumbnail(file) {
     const x = b.x + b.w / 2 - w / 2, y = b.y + b.h / 2 - h / 2;
     svgText = `<svg viewBox="${x} ${y} ${w} ${h}" preserveAspectRatio="xMidYMid meet" aria-hidden="true">${markup}</svg>`;
   } catch { svgText = ''; }
-  finally { ({ doc, geom, kidCount, hidden, linkCurves } = keep); }
+  finally { ({ doc, geom, kidCount, hidden, linkCurves, linkLabels } = keep); }
   thumbs.set(key, svgText);
   return svgText;
 }
@@ -3288,6 +3323,7 @@ on('#homeSort', 'change', renderHome);
 on('#homeNew', 'click', newDiagram);
 on('#homeOpen', 'click', open);
 on('#homeTour', 'click', startTutorial);
+on('#lineLabel', 'click', () => { closeMenu(); if (selLink != null) editLabel(selLink); });
 on('#homeExample', 'click', openTour);
 on('#bHelp', 'click', startTutorial);
 on('#homeClose', 'click', hideHome);
@@ -3320,6 +3356,42 @@ function applyMacLabels() {
   for (const k of document.querySelectorAll('#hints kbd')) if (k.textContent === 'Del') k.textContent = '⌫';   // the Mac delete key
   for (const sp of document.querySelectorAll('#hints span')) sp.innerHTML = sp.innerHTML.replace('scroll to zoom · drag background to pan', 'pinch to zoom · scroll or drag the background to pan');
 }
+
+/* ---------- link labels ---------- */
+// A short label on a link ("worked for", "created"), read from the first bubble to the second.
+// Double-click a link, or select it and start typing (or press Enter), to write one.
+const labelBox = $('#labelEditor');
+function editLabel(id, initial) {
+  const l = doc.links[id];
+  if (!l) return;
+  if (editing) finishEdit();
+  labelEdit = id; selLink = id; sel = null;
+  render();
+  const m = linkLabels[id] || { x: (N(l.from).x + N(l.to).x) / 2, y: (N(l.from).y + N(l.to).y) / 2 };
+  Object.assign(labelBox.style, { left: `${view.x + m.x * view.k}px`, top: `${view.y + m.y * view.k}px` });
+  labelBox.value = initial ?? l.label ?? '';
+  labelBox.hidden = false;
+  labelBox.focus();
+  labelBox.setSelectionRange(labelBox.value.length, labelBox.value.length);
+}
+function finishLabel(keep) {
+  if (labelEdit == null) return;
+  const l = doc.links[labelEdit], v = labelBox.value.replace(/\s+/g, ' ').trim().slice(0, 120);
+  labelEdit = null;
+  labelBox.hidden = true;
+  if (keep && l && v !== (l.label || '')) { commit(); if (v) l.label = v; else delete l.label; }
+  render();
+}
+labelBox.addEventListener('keydown', e => {
+  e.stopPropagation();
+  if (e.key === 'Enter') { e.preventDefault(); finishLabel(true); }
+  else if (e.key === 'Escape') { e.preventDefault(); finishLabel(false); }
+});
+labelBox.addEventListener('blur', () => finishLabel(true));
+svg.addEventListener('dblclick', e => {
+  const lk = e.target.closest('[data-link]');
+  if (lk) { e.preventDefault(); editLabel(+lk.dataset.link); }
+});
 
 /* ---------- version, installing and updates ---------- */
 // build.py stamps these into each release; the source copy says 'dev' and never looks for updates.
@@ -3517,8 +3589,9 @@ const TUT_STEPS = [
       commit(); doc.links[id] = { id, from: a.id, to: kids(b.id)[0]?.id ?? b.id }; render();
     },
     text: () => `<p>Click on a link to select it. Then use the ${ui('Line')} menu to give it arrows or a different style, or pick a colour for it.</p>
+      <p>Links can say what the connection is, too: <b>double-click</b> a link (or select it and just start typing) to give it a label like <i>worked for</i>.</p>
       <p class="tip"><kbd>${DEL_KEY}</kbd> deletes a selected link.</p>`,
-    done: () => Object.values(doc.links).some(l => l.style || l.arrow || l.width || l.color) },
+    done: () => Object.values(doc.links).some(l => l.style || l.arrow || l.width || l.color || l.label) },
   { title: 'More than one main idea', target: '#bMain',
     text: () => `<p>One file can hold several main ideas, for example every topic in a unit. Click ${ui('Main idea')}, type a name and press <kbd>Enter</kbd>.</p>
       <p class="tip">Give it a branch or two if you like. Links can join bubbles under different main ideas.</p>`,
