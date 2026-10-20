@@ -390,7 +390,7 @@
             <button data-v="thick" title="Thick"><svg class="ln" viewBox="0 0 36 12" aria-hidden="true"><path d="M3 6H33" style="stroke-width:4.5"/></svg></button></div>
           <div class="menu-row">
             <button id="lineBranch" title="Give every line in this branch the same look">Apply to whole branch</button>
-            <button id="lineReset" title="Back to the normal look">Reset</button>
+            <button id="lineReset" title="Back to the normal look (a link also goes back to its label's colour)">Reset</button>
             <button id="lineLabel" title="Write a short label on this link, e.g. &quot;worked for&quot; (or double-click the link)">Label…</button>
             <button id="lineDelete" title="Delete this link (Delete)"><svg class="ic" aria-hidden="true"><use href="#i-trash"/></svg> Delete link</button>
           </div>
@@ -1336,6 +1336,13 @@ function scene(ui, theme = appTheme) {
   linkCurves = []; linkLabels = {};
   // With a linked bubble selected, links that don't touch it fade back, so its own connections stand out.
   const focus = ui && sel != null && selLink == null && N(sel) ? visibleOf(sel) : null;
+  // Labelled links are coloured by their label: each different label takes the next rainbow colour, in
+  // the order the labels first appeared, so every "Created" link matches. A colour picked by hand wins.
+  const labelColor = {};
+  for (const l of Object.values(doc.links).sort((a, b) => a.id - b.id)) {
+    const key = l.label?.toLowerCase();
+    if (key && !(key in labelColor)) labelColor[key] = PALETTE[Object.keys(labelColor).length % PALETTE.length];
+  }
   const focusing = focus != null && Object.values(doc.links).some(l => visibleOf(l.from) === focus || visibleOf(l.to) === focus);
   let labels = '';
   const placed = [], boxes = ns.map(n => { const g = geom[n.id]; return { x: n.x, y: n.y, w: g.w, h: g.h }; });
@@ -1360,7 +1367,8 @@ function scene(ui, theme = appTheme) {
     const others = ns.filter(o => o.id !== a && o.id !== b), curve = routeLink(N(a), N(b), others, taken);
     for (let i = 0; i <= 30; i++) taken.push(bezAt(curve, i / 30));   // later links steer clear of this one
     linkCurves.push(curve);
-    const lc = l.color ? T.c(l.color) : T.link, dim = focusing && a !== focus && b !== focus;
+    const auto = l.label && labelColor[l.label.toLowerCase()];
+    const lc = l.color ? T.c(l.color) : auto ? T.c(auto) : T.link, dim = focusing && a !== focus && b !== focus;
     if (dim) edges += '<g opacity=".15">';
     edges += drawLine(N(a), N(b), { ...LINE_DEFAULTS.link, ...cleanLine(l) }, lc, 2.5,
       { link: true, curve, others, ui, hit: `data-link="${l.id}"`, selected: ui && selLink === l.id, selColor: T.sel });
@@ -2911,7 +2919,7 @@ function resetLine() {
   const t = lineTarget();
   if (!t) return;
   commit();
-  if (t.kind === 'link') for (const k of ['style', 'arrow', 'width']) delete t.obj[k];
+  if (t.kind === 'link') for (const k of ['style', 'arrow', 'width', 'color']) delete t.obj[k];   // colour too: back to its label's
   else delete t.node.line;
   render();
 }
