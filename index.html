@@ -2199,9 +2199,9 @@ document.addEventListener('keydown', e => {
     else if (k === '0') { e.preventDefault(); seen('fit'); fit(); }
     return;
   }
-  if (selLink != null && doc.links[selLink] && (k === 'Enter' || k === 'F2' || (k.length === 1 && k !== ' ' && !e.altKey))) {
-    e.preventDefault();   // a selected link: start writing its label
-    return editLabel(selLink, k.length === 1 ? (doc.links[selLink].label || '') + k : undefined);
+  if (selLink != null && doc.links[selLink] && (k === 'Enter' || k === 'F2' || (k.length === 1 && !e.altKey))) {
+    e.preventDefault();   // a selected link: start writing its label (Space, F2 and Enter edit it as it is)
+    return editLabel(selLink, k.length === 1 && k !== ' ' ? (doc.links[selLink].label || '') + k : undefined);
   }
   if (k === 'Tab') { e.preventDefault(); addChild(cur()); }
   else if (k === 'Enter') { e.preventDefault(); addSibling(); }
