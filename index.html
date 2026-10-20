@@ -1334,6 +1334,9 @@ function scene(ui, theme = appTheme) {
   }
   const taken = [];
   linkCurves = []; linkLabels = {};
+  // With a linked bubble selected, links that don't touch it fade back, so its own connections stand out.
+  const focus = ui && sel != null && selLink == null && N(sel) ? visibleOf(sel) : null;
+  const focusing = focus != null && Object.values(doc.links).some(l => visibleOf(l.from) === focus || visibleOf(l.to) === focus);
   let labels = '';
   const placed = [], boxes = ns.map(n => { const g = geom[n.id]; return { x: n.x, y: n.y, w: g.w, h: g.h }; });
   const overlap = (a, b, pad) => Math.max(0, Math.min(a.x + a.w / 2, b.x + b.w / 2) - Math.max(a.x - a.w / 2, b.x - b.w / 2) + pad)
@@ -1357,9 +1360,11 @@ function scene(ui, theme = appTheme) {
     const others = ns.filter(o => o.id !== a && o.id !== b), curve = routeLink(N(a), N(b), others, taken);
     for (let i = 0; i <= 30; i++) taken.push(bezAt(curve, i / 30));   // later links steer clear of this one
     linkCurves.push(curve);
-    const lc = l.color ? T.c(l.color) : T.link;
+    const lc = l.color ? T.c(l.color) : T.link, dim = focusing && a !== focus && b !== focus;
+    if (dim) edges += '<g opacity=".15">';
     edges += drawLine(N(a), N(b), { ...LINE_DEFAULTS.link, ...cleanLine(l) }, lc, 2.5,
       { link: true, curve, others, ui, hit: `data-link="${l.id}"`, selected: ui && selLink === l.id, selColor: T.sel });
+    if (dim) edges += '</g>';
     // The label sits on the middle of the link, on a little tag that hides the line behind its text.
     if (l.label && !(ui && labelEdit === l.id)) {
       const fs = 12, lh = 15;
@@ -1367,7 +1372,7 @@ function scene(ui, theme = appTheme) {
       const lines = wrapText(l.label, 170), tw = Math.max(...lines.map(t => mctx.measureText(t).width));
       const w = Math.ceil(tw) + 16, h = lines.length * lh + 8, m = spotFor(curve, w, h), x = m.x - w / 2, y = m.y - h / 2;
       linkLabels[l.id] = { x: m.x, y: m.y, w, h };
-      labels += `<g data-link="${l.id}" style="cursor:pointer"><rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${Math.min(h / 2, 10)}" fill="${T.bg}" stroke="${ui && selLink === l.id ? T.sel : lc}" stroke-width="${ui && selLink === l.id ? 2 : 1.2}"/>`
+      labels += `<g data-link="${l.id}" style="cursor:pointer"${dim ? ' opacity=".15"' : ''}><rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${Math.min(h / 2, 10)}" fill="${T.bg}" stroke="${ui && selLink === l.id ? T.sel : lc}" stroke-width="${ui && selLink === l.id ? 2 : 1.2}"/>`
         + lines.map((t, i) => `<text x="${m.x}" y="${y + 4 + lh * (i + 0.5)}" text-anchor="middle" dominant-baseline="central" font-family="${FONT}" font-size="${fs}" font-weight="600" fill="${lc}">${esc(t)}</text>`).join('') + '</g>';
     } else if (l.label || (ui && labelEdit === l.id)) linkLabels[l.id] = { ...bezAt(curve, 0.5), w: 0, h: 0 };
   }
@@ -1618,11 +1623,11 @@ function reparent(id, target) {
 function tidy() {
   seen('tidy');
   commit();
-  layout();
+  layout(true);
   render();   // the view stays put (the centre never moves); Fit / Ctrl+0 re-frames on request
 }
 // Computes the tidy positions in place (no history, no drawing).
-function layout() {
+function layout(pullFree = false) {
   countKids();
   for (const n of visible()) geom[n.id] = measure(n);
   const memo = {};
@@ -1659,6 +1664,7 @@ function layout() {
     place(top.id, -Math.PI / 2 - first / 2, 1.5 * Math.PI - first / 2, 0);
   }
   packMains();
+  if (pullFree) relaxFree();
   resolveOverlaps();
   for (const [id, x0, y0] of folded) {
     const dx = N(id).x - x0, dy = N(id).y - y0;
@@ -1677,8 +1683,14 @@ function packMains() {
   })) + 50;
   const anchor = { x: ms[0].x, y: ms[0].y }, placed = [{ ...anchor, r: radius(ms[0]) }];
   const clockwise = p => { const a = Math.atan2(p.y - anchor.y, p.x - anchor.x) + Math.PI / 2; return ((a % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI); };
+  // Links pull main ideas together: each one is placed where its links to the ones already placed are
+  // shortest, as well as close to the first, so linked ideas end up side by side and links cross less.
+  const done = new Set([ms[0].id]);
+  const linkEnds = Object.values(doc.links).map(l => [N(visibleOf(l.from)), N(visibleOf(l.to))]);
   for (const m of ms.slice(1)) {
     const r = radius(m), options = [];
+    const mine = linkEnds.flatMap(([a, b]) => topOf(a) === m && done.has(topOf(b).id) ? [[a, b]] : topOf(b) === m && done.has(topOf(a).id) ? [[b, a]] : []);
+    const pull = o => mine.reduce((sum, [own, other]) => sum + Math.hypot(own.x + o.x - m.x - other.x, own.y + o.y - m.y - other.y), 0) * 0.5;
     for (const p of placed) for (let k = 0; k < 12; k++) {   // touching one placed circle...
       const a = -Math.PI / 2 + k * Math.PI / 6;
       options.push({ x: p.x + (p.r + r) * Math.cos(a), y: p.y + (p.r + r) * Math.sin(a) });
@@ -1693,14 +1705,90 @@ function packMains() {
     let best = null, score = Infinity;
     for (const o of options) {
       if (placed.some(p => Math.hypot(o.x - p.x, o.y - p.y) < p.r + r - 0.5)) continue;
-      const sc = Math.round(Math.hypot(o.x - anchor.x, o.y - anchor.y)) + clockwise(o) * 1e-3;
+      const sc = Math.round(Math.hypot(o.x - anchor.x, o.y - anchor.y) + pull(o)) + clockwise(o) * 1e-3;
       if (sc < score) { score = sc; best = o; }
     }
     best ??= { x: anchor.x + placed.reduce((w, p) => w + 2 * p.r, 0), y: anchor.y };
     const dx = best.x - m.x, dy = best.y - m.y;
     for (const id of subtree(m.id)) if (!hidden.has(id)) { N(id).x += dx; N(id).y += dy; }   // folded ideas follow later
     placed.push({ ...best, r });
+    done.add(m.id);
   }
+}
+// Tidy button only: free bubbles (each with whatever hangs off it) drift towards the bubbles they're
+// linked to and away from anything they'd crowd, like a board of pins joined by elastic. Main ideas
+// stay put, and a free bubble without links barely moves. Auto-tidy leaves free bubbles alone, so they
+// don't wander every time something changes.
+function relaxFree() {
+  const units = all().filter(isRoot).map(t => {
+    const ids = subtree(t.id).filter(id => !hidden.has(id));
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const id of ids) { const n = N(id), g = geom[id]; x0 = Math.min(x0, n.x - g.w / 2); x1 = Math.max(x1, n.x + g.w / 2); y0 = Math.min(y0, n.y - g.h / 2); y1 = Math.max(y1, n.y + g.h / 2); }
+    return { ids, free: isFree(t), cx: (x0 + x1) / 2, cy: (y0 + y1) / 2, r: Math.hypot(x1 - x0, y1 - y0) / 2, dx: 0, dy: 0 };
+  });
+  if (!units.some(u => u.free)) return;
+  const unitOf = {};
+  units.forEach((u, i) => u.ids.forEach(id => { unitOf[id] = i; }));
+  const ls = Object.values(doc.links).map(l => [N(visibleOf(l.from)), N(visibleOf(l.to))])
+    .filter(([a, b]) => unitOf[a.id] !== unitOf[b.id] && (units[unitOf[a.id]].free || units[unitOf[b.id]].free));
+  if (!ls.length) return;
+  const size = n => Math.hypot(geom[n.id].w, geom[n.id].h) / 2;
+  mctx.font = `600 12px ${FONT}`;
+  const room = ls.map(([a, b]) => {   // each link wants space for its label as well as the two bubbles
+    const l = Object.values(doc.links).find(k => [k.from, k.to].map(visibleOf).sort().join() === [a.id, b.id].sort().join() && k.label);
+    return size(a) + size(b) + 160 + (l ? Math.min(170, mctx.measureText(l.label).width) + 20 : 0);
+  });
+  const simulate = start => {
+    const off = units.map((u, i) => ({ ...start[i] }));
+    for (let it = 0; it < 300; it++) {
+      const F = off.map((o, i) => ({ x: (start[i].x - o.x) * 0.01, y: (start[i].y - o.y) * 0.01 }));   // a light tie to where it started
+      ls.forEach(([a, b], k) => {
+        const ua = unitOf[a.id], ub = unitOf[b.id];
+        const vx = b.x + off[ub].x - a.x - off[ua].x, vy = b.y + off[ub].y - a.y - off[ua].y, d = Math.hypot(vx, vy) || 1;
+        const f = (d - room[k]) * 0.04;
+        F[ua].x += vx / d * f; F[ua].y += vy / d * f; F[ub].x -= vx / d * f; F[ub].y -= vy / d * f;
+      });
+      for (let i = 0; i < units.length; i++) for (let j = i + 1; j < units.length; j++) {
+        const A = units[i], B = units[j], vx = B.cx + off[j].x - A.cx - off[i].x, vy = B.cy + off[j].y - A.cy - off[i].y, d = Math.hypot(vx, vy) || 1;
+        const gap = A.r + B.r + 110 - d;
+        if (gap > 0) { F[i].x -= vx / d * gap * 0.3; F[i].y -= vy / d * gap * 0.3; F[j].x += vx / d * gap * 0.3; F[j].y += vy / d * gap * 0.3; }
+      }
+      units.forEach((u, i) => {
+        if (!u.free) return;
+        const m = Math.hypot(F[i].x, F[i].y), k = m > 25 ? 25 / m : 1;
+        off[i].x += F[i].x * k; off[i].y += F[i].y * k;
+      });
+    }
+    return off;
+  };
+  // Links crossing each other is what makes a board hard to read: try a few starting nudges (always
+  // the same ones, so Tidy gives the same result each time) and keep the arrangement with fewest crossings.
+  const ccw = (a, b, p) => (b.x - a.x) * (p.y - a.y) - (b.y - a.y) * (p.x - a.x);
+  const cost = off => {
+    const seg = ls.map(([a, b]) => [{ x: a.x + off[unitOf[a.id]].x, y: a.y + off[unitOf[a.id]].y }, { x: b.x + off[unitOf[b.id]].x, y: b.y + off[unitOf[b.id]].y }, a.id, b.id]);
+    let crossings = 0, length = 0;
+    for (let i = 0; i < seg.length; i++) {
+      length += Math.hypot(seg[i][1].x - seg[i][0].x, seg[i][1].y - seg[i][0].y);
+      for (let j = i + 1; j < seg.length; j++) {
+        const [a, b, ia, ib] = seg[i], [p, q, ip, iq] = seg[j];
+        if (ia === ip || ia === iq || ib === ip || ib === iq) continue;
+        if (ccw(a, b, p) * ccw(a, b, q) < 0 && ccw(p, q, a) * ccw(p, q, b) < 0) crossings++;
+      }
+    }
+    return crossings * 4000 + length + off.reduce((m, o) => m + Math.hypot(o.x, o.y), 0) * 0.5;   // and don't move things for nothing
+  };
+  let best = null, bestCost = Infinity;
+  for (let trial = 0; trial < 10; trial++) {
+    const start = units.map((u, i) => {
+      if (!trial || !u.free) return { x: 0, y: 0 };
+      const ang = (i * 2.399 + trial * 1.7) % (2 * Math.PI), r = 250 + 90 * (trial % 4);
+      return { x: Math.cos(ang) * r, y: Math.sin(ang) * r };
+    });
+    const off = simulate(start), c = cost(off);
+    if (c < bestCost) { bestCost = c; best = off; }
+  }
+  units.forEach((u, i) => { u.dx = best[i].x; u.dy = best[i].y; });
+  for (const u of units) if (u.free) for (const id of u.ids) { N(id).x += u.dx; N(id).y += u.dy; }
 }
 // Auto-tidy: glide everything to its tidy position. Part of the change that triggered it, so it
 // shares that change's undo step.
