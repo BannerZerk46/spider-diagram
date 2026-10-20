@@ -1902,8 +1902,8 @@ function finishLink(to) {
   const from = linkMode.from;
   cancelLink();
   if (to == null || to === from) return;
-  const existing = Object.values(doc.links).find(l => (l.from === from && l.to === to) || (l.from === to && l.to === from));
-  if (existing) { selLink = existing.id; sel = null; render(); return toast('Those bubbles are already linked'); }
+  // Two bubbles can be linked more than once (e.g. one each way, with different labels); the links bow
+  // apart so they don't sit on top of each other.
   commit();
   const id = doc.nextId++;
   doc.links[id] = { id, from, to };
@@ -3395,7 +3395,7 @@ svg.addEventListener('dblclick', e => {
 
 /* ---------- version, installing and updates ---------- */
 // build.py stamps these into each release; the source copy says 'dev' and never looks for updates.
-const APP_VERSION = '2026.10.20.2112', APP_UPDATE_URL = '';
+const APP_VERSION = '2026.10.20.2116', APP_UPDATE_URL = '';
 let aboutApp = { version: APP_VERSION, updates: false, canInstall: false, installed: false };
 const INSTALL_STORE = 'spider-diagram:no-install-offer';
 async function loadAbout() {
