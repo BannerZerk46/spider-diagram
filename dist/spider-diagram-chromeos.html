@@ -207,7 +207,7 @@
   .ln .fill { fill: currentColor; stroke: none; }
   #stage.linking, #stage.linking #canvas .node { cursor: crosshair; }
   .menu {
-    position: absolute; right: 0; top: calc(100% + 6px); z-index: 10; width: 350px;
+    position: absolute; right: 0; top: calc(100% + 6px); z-index: 10; width: 350px; max-width: calc(100vw - 16px);
     display: flex; flex-direction: column; gap: 10px; padding: 12px;
     background: var(--panel); border: 1px solid var(--line); border-radius: 10px; box-shadow: var(--menu-shadow);
   }
@@ -2866,11 +2866,20 @@ function closeMenu() {
   for (const m of document.querySelectorAll('.menu')) m.hidden = true;
   for (const b of document.querySelectorAll('[aria-haspopup]')) b.setAttribute('aria-expanded', 'false');
 }
+// Menus hang from the right edge of their button; when the toolbar wraps (a narrow window), that can
+// push one off the left of the screen, so slide it back into view.
+function keepOnScreen(menu) {
+  menu.style.right = '';
+  const r = menu.getBoundingClientRect(), margin = 8;
+  if (r.left < margin) menu.style.right = `${r.left - margin}px`;
+  else if (r.right > innerWidth - margin) menu.style.right = `${r.right - innerWidth + margin}px`;
+}
+addEventListener('resize', () => { for (const m of document.querySelectorAll('.menu:not([hidden])')) keepOnScreen(m); });
 function toggleMenu(btn) {   // the menu is the element right after its button
   const menu = btn.nextElementSibling, opening = menu.hidden;
   closeMenu();
   menu.hidden = !opening;
-  if (opening) seen('menu:' + menu.id);
+  if (opening) { seen('menu:' + menu.id); keepOnScreen(menu); }
   btn.setAttribute('aria-expanded', String(opening));
 }
 document.addEventListener('pointerdown', e => { if (!e.target.closest?.('.menu-wrap')) closeMenu(); });
@@ -3525,7 +3534,7 @@ svg.addEventListener('dblclick', e => {
 
 /* ---------- version, installing and updates ---------- */
 // build.py stamps these into each release; the source copy says 'dev' and never looks for updates.
-const APP_VERSION = '2026.10.20.2135', APP_UPDATE_URL = '';
+const APP_VERSION = '2026.10.20.2146', APP_UPDATE_URL = '';
 let aboutApp = { version: APP_VERSION, updates: false, canInstall: false, installed: false };
 const INSTALL_STORE = 'spider-diagram:no-install-offer';
 async function loadAbout() {
