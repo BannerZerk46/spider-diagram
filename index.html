@@ -142,15 +142,15 @@
   .fd .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .fd .where { color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 40%; }
   .fd .tg { font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 9px; color: #fff; }
-  #updateBar {
-    position: absolute; top: 12px; left: 50%; transform: translateX(-50%); z-index: 4; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px;
-    padding: 7px 8px 7px 14px; border-radius: 10px; background: var(--panel); color: var(--ink); border: 1px solid var(--line);
-    box-shadow: var(--menu-shadow); font-size: 13px; width: max-content; max-width: calc(100% - 24px);
+  #notices { position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%); z-index: 45; display: flex; flex-direction: column; gap: 8px; align-items: center; width: max-content; max-width: calc(100vw - 24px); pointer-events: none; }
+  .notice {
+    pointer-events: auto; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px;
+    padding: 8px 8px 8px 14px; border-radius: 10px; background: var(--panel); color: var(--ink); border: 1px solid var(--on-line);
+    box-shadow: var(--menu-shadow); font-size: 13.5px; max-width: 620px;
   }
-  .home-install { margin: 12px 20px 0; padding: 10px 12px 10px 14px; display: flex; align-items: center; gap: 10px; border-radius: 10px;
-    background: var(--on-bg); border: 1px solid var(--on-line); color: var(--ink); font-size: 13.5px; }
-  .home-install .ic { width: 20px; height: 20px; color: var(--accent); }
-  .home-install .grow, .menu-row .grow { flex: 1; }
+  .notice .ic { width: 20px; height: 20px; color: var(--accent); }
+  .notice > span { flex: 1 1 260px; }
+  .menu-row .grow { flex: 1; }
   #toast.show { opacity: 1; transform: translate(-50%, 0); }
   #main { flex: 1; display: flex; min-height: 0; }
   #notes {
@@ -434,6 +434,17 @@
 
   <input type="file" id="imgfile" accept="image/*" hidden>
 </header>
+<!-- Notices that show wherever you are, homepage included: a new version, and the offer to install. -->
+<div id="notices">
+  <div id="updateBar" class="notice" hidden><span id="updateText"></span><button id="updateGo" class="primary">Update now</button><button id="updateLater">Later</button></div>
+  <div id="homeInstall" class="notice" hidden>
+    <svg class="ic" aria-hidden="true"><use href="#i-logo"/></svg>
+    <span id="homeInstallText"></span>
+    <button id="homeInstallBtn" class="primary">Install</button>
+    <button id="homeInstallLater">Not now</button>
+    <button id="homeInstallNo" class="icon" title="Don't ask again"><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg></button>
+  </div>
+</div>
 <div id="home" hidden>
   <div class="home-bar">
     <h1><svg class="ic" aria-hidden="true"><use href="#i-logo"/></svg> Spider Diagrams</h1>
@@ -449,12 +460,6 @@
     <button id="homeClose" class="icon" title="Back to your diagram (Esc)"><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg></button>
   </div>
   <div id="homeFoldersPanel" class="home-folders" hidden></div>
-  <div id="homeInstall" class="home-install" hidden>
-    <svg class="ic" aria-hidden="true"><use href="#i-logo"/></svg>
-    <span class="grow" id="homeInstallText"></span>
-    <button id="homeInstallBtn" class="primary">Install</button>
-    <button id="homeInstallNo" class="icon" title="Don't ask again"><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg></button>
-  </div>
   <div id="homeStatus" class="home-status"></div>
   <div id="homeGrid" class="home-grid"></div>
 </div>
@@ -485,7 +490,6 @@
     <input id="finderInput" placeholder="Find a bubble: type a name, words from its notes, or #tag" autocomplete="off" spellcheck="false">
     <div id="finderList"></div>
   </div>
-  <div id="updateBar" hidden><span id="updateText"></span><button id="updateGo" class="primary">Update now</button><button id="updateLater">Later</button></div>
 </div>
 <aside id="notes" hidden aria-label="Notes">
   <div id="notesResize" title="Drag to resize"></div>
@@ -4248,13 +4252,14 @@ async function runUpdate() {
 on('#updateGo', 'click', runUpdate);
 on('#updateLater', 'click', () => { $('#updateBar').hidden = true; });
 on('#bCheckUpdate', 'click', () => { closeMenu(); checkUpdate(true); });
+let installLater = false;   // "Not now": ask again next time the app starts
 function showInstallOffer() {
   let no = false; try { no = !!localStorage.getItem(INSTALL_STORE); } catch {}
-  const show = aboutApp.canInstall && !aboutApp.installed && !no;
+  const show = aboutApp.canInstall && !aboutApp.installed && !no && !installLater && !tut;
   $('#homeInstall').hidden = !show;
   if (show) $('#homeInstallText').textContent = aboutApp.system === 'Windows'
-    ? 'Add Spider Diagram to your Start menu, so you can open it like any other app and double-click .spider files to open them.'
-    : 'Add Spider Diagram to your apps menu, so you can open it like any other app and double-click .spider files to open them.';
+    ? 'Install Spider Diagram? It goes in your Start menu, .spider files open with it, and it keeps itself up to date.'
+    : 'Install Spider Diagram? It goes in your apps menu, .spider files open with it, and it keeps itself up to date.';
 }
 on('#homeInstallBtn', 'click', async () => {
   try {
@@ -4263,6 +4268,7 @@ on('#homeInstallBtn', 'click', async () => {
     toast(aboutApp.system === 'Windows' ? 'Installed! Next time, open Spider Diagram from the Start menu' : 'Installed! Next time, open Spider Diagram from your apps menu');
   } catch (err) { toast("Couldn't install: " + err.message); }
 });
+on('#homeInstallLater', 'click', () => { installLater = true; showInstallOffer(); });
 on('#homeInstallNo', 'click', () => { try { localStorage.setItem(INSTALL_STORE, '1'); } catch {} showInstallOffer(); });
 
 /* ---------- tutorial ---------- */
@@ -4494,6 +4500,7 @@ function tutLock(step) {
 function endTutorial() {
   if (tut?.timer) clearTimeout(tut.timer);
   tut = null;
+  setTimeout(showInstallOffer, 800);
   for (const el of document.querySelectorAll('.tut-off')) el.classList.remove('tut-off');
   $('#tut').hidden = true;
   for (const el of document.querySelectorAll('.tut-glow')) el.classList.remove('tut-glow');
