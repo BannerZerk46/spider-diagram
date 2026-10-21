@@ -1131,12 +1131,13 @@ function measure(n) {
     if (over > 0 && room > 0) w = Math.max(w, Math.ceil(tw + 2 * (R - Math.sqrt(room))));
   }
   // Tags (from #tags in the notes) sit in a row of little pills under the text.
-  const tags = tagsOf(n), shown = tags.slice(0, 4);
-  mctx.font = `600 10.5px ${FONT}`;
-  const chips = shown.map(t => ({ t, w: Math.ceil(mctx.measureText('#' + t).width) + 12 }));
-  if (tags.length > shown.length) chips.push({ t: null, label: `+${tags.length - shown.length}`, w: Math.ceil(mctx.measureText(`+${tags.length - shown.length}`).width) + 12 });
-  const chipW = chips.reduce((sum, c) => sum + c.w, 0) + Math.max(0, chips.length - 1) * 4;
-  const tagH = chips.length ? 17 : 0, tagGap = chips.length && ch ? 6 : 0;
+  // They scale with the bubble's text (about three quarters of its size), so bigger bubbles get bigger tags.
+  const tags = tagsOf(n), shown = tags.slice(0, 4), tfs = Math.max(11, Math.round(L.fs * 0.74 * 2) / 2), pad = Math.round(tfs * 1.15);
+  mctx.font = `600 ${tfs}px ${FONT}`;
+  const chips = shown.map(t => ({ t, w: Math.ceil(mctx.measureText('#' + t).width) + pad }));
+  if (tags.length > shown.length) chips.push({ t: null, label: `+${tags.length - shown.length}`, w: Math.ceil(mctx.measureText(`+${tags.length - shown.length}`).width) + pad });
+  const chipW = chips.reduce((sum, c) => sum + c.w, 0) + Math.max(0, chips.length - 1) * Math.round(tfs * 0.4);
+  const tagH = chips.length ? Math.round(tfs * 1.65) : 0, tagGap = chips.length && ch ? Math.round(tfs * 0.55) : 0;
   if (chips.length) { h += tagGap + tagH; if (L.shape !== 'text') w = Math.max(w, chipW + L.px * 2 + (L.shape === 'box' ? 0 : 16)); else w = Math.max(w, chipW); }
   if (L.shape === 'ellipse') {
     w = Math.ceil(w * 1.22); h = Math.ceil(h * 1.35);
@@ -1145,7 +1146,7 @@ function measure(n) {
   }
   const top = -(ch + tagGap + tagH) / 2;
   return { ...L, lines, lh, tw, w, h, iw, ih, imgY: top, ty: top + ih + gap + lines.length * lh / 2, th: lines.length * lh,
-    chips, chipW, tagY: top + ch + tagGap + tagH / 2 };
+    chips, chipW, tfs, tagH, tagY: top + ch + tagGap + tagH / 2 };
 }
 // Greedy word wrap to maxW pixels (mctx must already have the bubble's font). Manual newlines are kept.
 function wrapText(text, maxW) {
@@ -1482,11 +1483,11 @@ function scene(ui, theme = appTheme) {
     });
     if (g.chips.length) {   // the tag pills
       let cx = n.x - g.chipW / 2;
-      for (const chip of g.chips) {
+      for (const chip of g.chips) {   // a ring in the background colour keeps each pill distinct from the bubble behind it
         const col = chip.t ? tagColor[chip.t] : '#868e96', on = chip.t && focusTag === chip.t;
-        body += `<g${chip.t ? ` data-tag="${esc(chip.t)}" style="cursor:pointer"` : ''}><rect x="${cx}" y="${n.y + g.tagY - 8.5}" width="${chip.w}" height="17" rx="8.5" fill="${col}"${on ? ` stroke="${T.sel}" stroke-width="2"` : ''}/>`
-          + `<text x="${cx + chip.w / 2}" y="${n.y + g.tagY}" text-anchor="middle" dominant-baseline="central" font-family="${FONT}" font-size="10.5" font-weight="600" fill="${inkOn(col)}">${esc(chip.t ? '#' + chip.t : chip.label)}</text></g>`;
-        cx += chip.w + 4;
+        body += `<g${chip.t ? ` data-tag="${esc(chip.t)}" style="cursor:pointer"` : ''}><rect x="${cx}" y="${n.y + g.tagY - g.tagH / 2}" width="${chip.w}" height="${g.tagH}" rx="${g.tagH / 2}" fill="${col}" stroke="${on ? T.sel : T.bg}" stroke-width="${on ? 2.5 : 1.5}"/>`
+          + `<text x="${cx + chip.w / 2}" y="${n.y + g.tagY}" text-anchor="middle" dominant-baseline="central" font-family="${FONT}" font-size="${g.tfs}" font-weight="600" fill="${inkOn(col)}">${esc(chip.t ? '#' + chip.t : chip.label)}</text></g>`;
+        cx += chip.w + Math.round(g.tfs * 0.4);
       }
     }
     if (g.shape === 'text' && g.lines.length) {
@@ -3603,9 +3604,23 @@ function tagsOf(n) {
   }
   return t;
 }
+// Each tag gets one colour everywhere: the next in rainbow order, skipping any colour (or its rainbow
+// neighbours) that a bubble carrying the tag already is, so a pill never melts into its bubble.
 function tagColors() {
-  const out = {};
-  for (const n of all().sort((a, b) => a.id - b.id)) for (const t of tagsOf(n)) out[t] ??= PALETTE[Object.keys(out).length % PALETTE.length];
+  const out = {}, onColors = {};
+  const ns = all().sort((a, b) => a.id - b.id);
+  for (const n of ns) for (const t of tagsOf(n)) (onColors[t] ??= new Set()).add(PALETTE.indexOf(n.color));
+  let next = 0;
+  for (const n of ns) for (const t of tagsOf(n)) {
+    if (out[t]) continue;
+    const clash = i => [...onColors[t]].some(c => c >= 0 && Math.min(Math.abs(c - i), PALETTE.length - Math.abs(c - i)) <= 1);
+    let pick = -1;
+    for (let k = 0; k < PALETTE.length && pick < 0; k++) if (!clash((next + k) % PALETTE.length)) pick = (next + k) % PALETTE.length;
+    for (let k = 0; k < PALETTE.length && pick < 0; k++) if (!onColors[t].has((next + k) % PALETTE.length)) pick = (next + k) % PALETTE.length;
+    if (pick < 0) pick = next % PALETTE.length;
+    out[t] = PALETTE[pick];
+    next = pick + 1;
+  }
   return out;
 }
 function setFocusTag(t) {
