@@ -129,6 +129,19 @@
     font: 600 13px inherit; font-family: inherit; color: var(--editor-ink); background: var(--editor);
     border: 2px solid var(--accent); border-radius: 999px; outline: none; box-shadow: var(--menu-shadow);
   }
+  #finder {
+    position: absolute; top: 14px; left: 50%; transform: translateX(-50%); z-index: 6; width: min(520px, calc(100% - 24px));
+    background: var(--panel); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--menu-shadow); overflow: hidden;
+  }
+  #finderInput { width: 100%; border: 0; border-bottom: 1px solid var(--line); padding: 11px 14px; font: inherit; font-size: 15px; color: var(--ink); background: var(--panel); outline: none; }
+  #finderList { max-height: 50vh; overflow: auto; }
+  #finderList:empty::after { content: 'No bubbles match'; display: block; padding: 10px 14px; color: var(--muted); font-size: 13px; }
+  .fd { display: flex; align-items: center; gap: 8px; padding: 7px 14px; cursor: pointer; font-size: 14px; }
+  .fd.on { background: var(--on-bg); }
+  .fd .dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+  .fd .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .fd .where { color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 40%; }
+  .fd .tg { font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 9px; color: #fff; }
   #updateBar {
     position: absolute; top: 12px; left: 50%; transform: translateX(-50%); z-index: 4; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px;
     padding: 7px 8px 7px 14px; border-radius: 10px; background: var(--panel); color: var(--ink); border: 1px solid var(--line);
@@ -150,6 +163,22 @@
   .notes-tools { display: flex; flex-wrap: wrap; gap: 4px; padding: 8px 12px; border-bottom: 1px solid var(--line); background: var(--row2); }
   .notes-tools button { padding: 4px 8px; min-width: 30px; }
   .notes-tools select { padding: 4px 6px; }
+  ::highlight(note-wl) { color: var(--accent); }
+  ::highlight(note-missing) { color: var(--muted); text-decoration: underline dashed; }
+  ::highlight(note-tag) { color: var(--accent); background-color: var(--on-bg); }
+  .notes-links { border-top: 1px solid var(--line); padding: 8px 18px 10px; font-size: 13px; display: flex; flex-direction: column; gap: 4px; max-height: 32%; overflow: auto; }
+  .notes-links .nl-title { color: var(--muted); font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+  .notes-links .nl { display: flex; align-items: center; gap: 6px; color: var(--muted); }
+  .notes-links button { border: 0; padding: 0; background: none; font-size: 13px; cursor: pointer; white-space: normal; text-align: left; }
+  .notes-links .go { color: var(--accent); font-weight: 600; }
+  .notes-links .go:hover { text-decoration: underline; }
+  .notes-links .dir { width: 14px; flex: none; text-align: center; color: var(--muted); }
+  .notes-links .del { color: var(--muted); padding: 0 4px; font-size: 15px; }
+  .notes-links .del:hover { color: var(--ink); }
+  .notes-links input { font: inherit; font-size: 13px; color: var(--ink); background: transparent; border: 1px solid transparent; border-radius: 6px; padding: 2px 6px; min-width: 0; }
+  .notes-links input:hover, .notes-links input:focus { border-color: var(--line); background: var(--editor); outline: none; }
+  .notes-links .lbl { flex: none; max-width: 70%; font-weight: 600; }
+  .notes-links .add input { flex: 1; border-color: var(--line); }
   #notesBody { flex: 1; overflow: auto; padding: 14px 18px; outline: none; font-size: 15px; line-height: 1.55; overflow-wrap: anywhere; }
   #notesBody[contenteditable="false"] { color: var(--muted); }
   #notesBody:empty::before { content: attr(data-placeholder); color: var(--muted); pointer-events: none; }
@@ -314,7 +343,7 @@
           <p class="menu-note">Every idea as indented bullet points — sections become headings. Includes collapsed branches.</p>
           <div class="menu-row">
             <select id="outlineFmt" class="grow" title="Word documents open in Word, Google Docs and LibreOffice">
-              <option value="docx">Word / Google Docs (.docx)</option><option value="md">Markdown (.md)</option><option value="txt">Plain text (.txt)</option>
+              <option value="docx">Word / Google Docs (.docx)</option><option value="md">Markdown (.md)</option><option value="txt">Plain text (.txt)</option><option value="obsidian">Obsidian vault (.zip)</option>
             </select>
           </div>
           <div class="menu-row">
@@ -323,6 +352,7 @@
           </div>
           <label class="check" id="docxPicRow"><input type="checkbox" id="docxPic" checked> Include a picture of the diagram</label>
           <p class="menu-note" id="docxNote">Copy pastes formatted headings and bullets into Google Docs or Word.</p>
+          <p class="menu-note" id="vaultNote" hidden>A folder of notes, one per bubble, with branches and links as [[links]]: unzip it and open the folder in Obsidian, and its graph view shows your diagram. It opens back up here too, with Obsidian vault… on the homepage.</p>
         </div>
       </div>
     </div>
@@ -400,6 +430,7 @@
     </div>
   </div>
   <input type="file" id="file" accept=".spider,.json,application/json" hidden>
+  <input type="file" id="vaultDir" webkitdirectory multiple hidden>
 
   <input type="file" id="imgfile" accept="image/*" hidden>
 </header>
@@ -411,6 +442,7 @@
     <button id="homeTour" title="A step-by-step tutorial that teaches you everything the app can do"><svg class="ic" aria-hidden="true"><use href="#i-help"/></svg> Tutorial</button>
     <button id="homeExample" title="Open an example diagram that shows off the app's features"><svg class="ic" aria-hidden="true"><use href="#i-logo"/></svg> Example</button>
     <button id="homeFolders" title="Choose which folders are searched for diagrams"><svg class="ic" aria-hidden="true"><use href="#i-folder"/></svg> Folders</button>
+    <button id="homeVault" title="Turn an Obsidian vault folder into a diagram (or drop a .zip of one onto the diagram)">Obsidian vault…</button>
     <button id="homeOpen" title="Open a .spider file from anywhere (Ctrl+O)">Open file…</button>
     <button id="homeNew" class="primary" title="Start a new diagram"><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg> New diagram</button>
     <button id="homeTheme" class="icon" title="Switch between light and dark mode"><svg class="ic" aria-hidden="true"><use href="#i-moon"/></svg></button>
@@ -444,9 +476,15 @@
     <span>Drag to move (<kbd>Shift</kbd>: single idea) · drop onto another idea to re-attach</span>
     <span>Drag the link handle on a selected bubble (or <kbd>Alt</kbd>+drag) to another bubble to link them</span>
     <span>Double-click a link (or select it and type) to label it</span>
+    <span><kbd>/</kbd> find a bubble (by name, notes or #tag)</span>
+    <span>In notes: [[Name]] links to a bubble, #tag tags it, and # / - / 1. / &gt; start headings, lists and quotes</span>
     <span>Double-click empty space to add a branch there (nothing selected: a free bubble) · scroll to zoom · drag background to pan</span>
   </div>
   <div id="toast"></div>
+  <div id="finder" hidden>
+    <input id="finderInput" placeholder="Find a bubble: type a name, words from its notes, or #tag" autocomplete="off" spellcheck="false">
+    <div id="finderList"></div>
+  </div>
   <div id="updateBar" hidden><span id="updateText"></span><button id="updateGo" class="primary">Update now</button><button id="updateLater">Later</button></div>
 </div>
 <aside id="notes" hidden aria-label="Notes">
@@ -477,8 +515,9 @@
     <button data-cmd="insertHorizontalRule" title="Divider line"><svg class="ic" aria-hidden="true"><use href="#i-divider"/></svg></button>
     <button data-cmd="removeFormat" title="Clear formatting"><svg class="ic" aria-hidden="true"><use href="#i-clear-format"/></svg></button>
   </div>
-  <div id="notesBody" contenteditable="true" spellcheck="true" data-placeholder="Notes for this bubble — write as much as you like. Paste or drop pictures, add tables and links."></div>
-  <div class="notes-foot">Ctrl+click a link to open it · Esc goes back to the diagram</div>
+  <div id="notesBody" contenteditable="true" spellcheck="true" data-placeholder="Notes for this bubble: write as much as you like. [[Name]] links to another bubble, #tag tags this one, and Markdown works (# heading, - list, **bold**)."></div>
+  <div id="notesLinks" class="notes-links"></div>
+  <div class="notes-foot">[[Name]] links · #tag tags · Ctrl+click either to follow it · Esc goes back to the diagram</div>
   <input type="file" id="notesImg" accept="image/*" multiple hidden>
 </aside>
 </div>
@@ -966,7 +1005,7 @@ function normalize(d) {
     const id = Number(key);
     if (!Number.isInteger(id) || !l || !nodes[l.from] || !nodes[l.to] || l.from === l.to) continue;
     const label = typeof l.label === 'string' ? l.label.replace(/\s+/g, ' ').trim().slice(0, 120) : '';
-    links[id] = { id, from: l.from, to: l.to, ...cleanLine(l), ...(hex(l.color) ? { color: l.color } : {}), ...(label ? { label } : {}) };
+    links[id] = { id, from: l.from, to: l.to, ...cleanLine(l), ...(hex(l.color) ? { color: l.color } : {}), ...(label ? { label } : {}), ...(l.note === true ? { note: true } : {}) };
   }
   const maxId = Math.max(...Object.keys(nodes).map(Number), ...Object.keys(links).map(Number));
   const title = typeof d?.title === 'string' ? d.title.replace(/\s+/g, ' ').trim().slice(0, 200) : '';
@@ -1097,13 +1136,23 @@ function measure(n) {
     const R = cornerRadius({ shape: L.shape, d: L.d, h, ih }), over = yh - (h / 2 - R), room = (R - M) ** 2 - over ** 2;
     if (over > 0 && room > 0) w = Math.max(w, Math.ceil(tw + 2 * (R - Math.sqrt(room))));
   }
+  // Tags (from #tags in the notes) sit in a row of little pills under the text.
+  // They scale with the bubble's text (about three quarters of its size), so bigger bubbles get bigger tags.
+  const tags = tagsOf(n), shown = tags.slice(0, 4), tfs = Math.max(11, Math.round(L.fs * 0.74 * 2) / 2), pad = Math.round(tfs * 1.15);
+  mctx.font = `600 ${tfs}px ${FONT}`;
+  const chips = shown.map(t => ({ t, w: Math.ceil(mctx.measureText('#' + t).width) + pad }));
+  if (tags.length > shown.length) chips.push({ t: null, label: `+${tags.length - shown.length}`, w: Math.ceil(mctx.measureText(`+${tags.length - shown.length}`).width) + pad });
+  const chipW = chips.reduce((sum, c) => sum + c.w, 0) + Math.max(0, chips.length - 1) * Math.round(tfs * 0.4);
+  const tagH = chips.length ? Math.round(tfs * 1.65) : 0, tagGap = chips.length && ch ? Math.round(tfs * 0.55) : 0;
+  if (chips.length) { h += tagGap + tagH; if (L.shape !== 'text') w = Math.max(w, chipW + L.px * 2 + (L.shape === 'box' ? 0 : 16)); else w = Math.max(w, chipW); }
   if (L.shape === 'ellipse') {
     w = Math.ceil(w * 1.22); h = Math.ceil(h * 1.35);
     const k = lines.length ? Math.hypot((tw / 2 + M) / (w / 2), (yh + M) / (h / 2)) : 0;
     if (k > 1) { w = Math.ceil(w * k); h = Math.ceil(h * k); }
   }
-  const top = -ch / 2;
-  return { ...L, lines, lh, tw, w, h, iw, ih, imgY: top, ty: top + ih + gap + lines.length * lh / 2, th: lines.length * lh };
+  const top = -(ch + tagGap + tagH) / 2;
+  return { ...L, lines, lh, tw, w, h, iw, ih, imgY: top, ty: top + ih + gap + lines.length * lh / 2, th: lines.length * lh,
+    chips, chipW, tfs, tagH, tagY: top + ch + tagGap + tagH / 2 };
 }
 // Greedy word wrap to maxW pixels (mctx must already have the bubble's font). Manual newlines are kept.
 function wrapText(text, maxW) {
@@ -1329,13 +1378,15 @@ function scene(ui, theme = appTheme) {
   for (const n of ns) {
     if (isRoot(n)) continue;
     const d = geom[n.id].d;
-    edges += drawLine(N(n.parent), n, { ...LINE_DEFAULTS.tree, ...n.line }, paint(n), d === 1 ? 6 : d === 2 ? 3.5 : 2,
-      { ui, hit: `data-edge="${n.id}"` });
+    const fadeLine = focusTag && !tagsOf(n).includes(focusTag) && !tagsOf(N(n.parent)).includes(focusTag);   // highlighting a tag
+    edges += (fadeLine ? '<g opacity=".18">' : '') + drawLine(N(n.parent), n, { ...LINE_DEFAULTS.tree, ...n.line }, paint(n), d === 1 ? 6 : d === 2 ? 3.5 : 2,
+      { ui, hit: `data-edge="${n.id}"` }) + (fadeLine ? '</g>' : '');
   }
   const taken = [];
   linkCurves = []; linkLabels = {};
   // With a linked bubble selected, links that don't touch it fade back, so its own connections stand out.
-  const focus = ui && sel != null && selLink == null && N(sel) ? visibleOf(sel) : null;
+  // (While a tag is highlighted, that decides instead: links touching a tagged bubble stay, whatever's selected.)
+  const focus = ui && !focusTag && sel != null && selLink == null && N(sel) ? visibleOf(sel) : null;
   // Labelled links are coloured by their label: each different label takes the next rainbow colour, in
   // the order the labels first appeared, so every "Created" link matches. A colour picked by hand wins.
   const labelColor = {};
@@ -1374,7 +1425,8 @@ function scene(ui, theme = appTheme) {
     for (let i = 0; i <= 30; i++) taken.push(bezAt(curve, i / 30));   // later links steer clear of this one
     linkCurves.push(curve);
     const auto = l.label && labelColor[l.label.toLowerCase()];
-    const lc = l.color ? T.c(l.color) : auto ? T.c(auto) : T.link, dim = focusing && a !== focus && b !== focus;
+    const lc = l.color ? T.c(l.color) : auto ? T.c(auto) : T.link;
+    const dim = (focusing && a !== focus && b !== focus) || (focusTag && !tagsOf(N(a)).includes(focusTag) && !tagsOf(N(b)).includes(focusTag));
     if (dim) edges += '<g opacity=".15">';
     edges += drawLine(N(a), N(b), { ...LINE_DEFAULTS.link, ...cleanLine(l) }, lc, 2.5,
       { link: true, curve, others, ui, hit: `data-link="${l.id}"`, selected: ui && selLink === l.id, selColor: T.sel });
@@ -1404,6 +1456,7 @@ function scene(ui, theme = appTheme) {
   }
   edges += labels;
   ns.sort((a, b) => geom[b.id].d - geom[a.id].d);
+  const tagColor = tagColors();
   for (const n of ns) {
     const g = geom[n.id], x = n.x - g.w / 2, y = n.y - g.h / 2, c = T.c(shadeOf(n));
     let fill, stroke = paint(n), sw, ink;
@@ -1418,7 +1471,7 @@ function scene(ui, theme = appTheme) {
       : `<rect x="${x + dx}" y="${y + dy}" width="${g.w}" height="${g.h}" rx="${rx}" fill="${f}" stroke="${s}" stroke-width="${w}"${extra}/>`;
     const folded = n.collapsed && kidCount[n.id];
 
-    body += `<g data-id="${n.id}" class="node">`;
+    body += `<g data-id="${n.id}" class="node"${focusTag && !tagsOf(n).includes(focusTag) ? ' opacity=".18"' : ''}>`;
     if (ui && sel === n.id) body += `<rect x="${x - 6}" y="${y - 6}" width="${g.w + 12 + (folded ? 10 : 0)}" height="${g.h + 12 + (folded ? 10 : 0)}" rx="${Math.min(rx + 6, (g.h + 12) / 2)}" fill="none" stroke="${T.sel}" stroke-width="2" stroke-dasharray="6 4"/>`;
     if (folded && g.shape !== 'text') {
       // A collapsed branch looks like a little stack of cards behind the bubble.
@@ -1436,6 +1489,15 @@ function scene(ui, theme = appTheme) {
     g.lines.forEach((l, i) => {
       body += `<text x="${n.x}" y="${y0 + i * g.lh}" text-anchor="middle" dominant-baseline="central" font-family="${FONT}" font-size="${g.fs}" font-weight="${g.fw}"${g.italic ? ' font-style="italic"' : ''} fill="${ink}">${esc(l)}</text>`;
     });
+    if (g.chips.length) {   // the tag pills
+      let cx = n.x - g.chipW / 2;
+      for (const chip of g.chips) {   // a ring in the background colour keeps each pill distinct from the bubble behind it
+        const col = chip.t ? tagColor[chip.t] : '#868e96', on = chip.t && focusTag === chip.t;
+        body += `<g${chip.t ? ` data-tag="${esc(chip.t)}" style="cursor:pointer"` : ''}><rect x="${cx}" y="${n.y + g.tagY - g.tagH / 2}" width="${chip.w}" height="${g.tagH}" rx="${g.tagH / 2}" fill="${col}" stroke="${on ? T.sel : T.bg}" stroke-width="${on ? 2.5 : 1.5}"/>`
+          + `<text x="${cx + chip.w / 2}" y="${n.y + g.tagY}" text-anchor="middle" dominant-baseline="central" font-family="${FONT}" font-size="${g.tfs}" font-weight="600" fill="${inkOn(col)}">${esc(chip.t ? '#' + chip.t : chip.label)}</text></g>`;
+        cx += chip.w + Math.round(g.tfs * 0.4);
+      }
+    }
     if (g.shape === 'text' && g.lines.length) {
       const uy = n.y + g.ty + g.th / 2 + 2;
       body += `<line x1="${n.x - g.tw / 2}" y1="${uy}" x2="${n.x + g.tw / 2}" y2="${uy}" stroke="${c}" stroke-width="${g.sec || g.d < 2 ? 3 : 2}" stroke-linecap="round"/>`;
@@ -1601,7 +1663,11 @@ function addFree(at) {
 }
 function removeSelected() {
   seen('delete');
-  if (selLink != null) { commit(); delete doc.links[selLink]; selLink = null; render(); return; }
+  if (selLink != null) {
+    const l = doc.links[selLink];
+    if (l?.note) toast(`This link comes from [[${bubbleName(N(l.to))}]] in the notes of "${bubbleName(N(l.from))}", so it comes back unless you remove that`);
+    commit(); delete doc.links[selLink]; selLink = null; render(); return;
+  }
   const s = sel != null && N(sel);
   if (!s) return;
   if (isMain(s) && mains().length === 1) return toast('A diagram needs at least one main idea');
@@ -1804,7 +1870,7 @@ function relaxFree() {
     return crossings * 4000 + length + off.reduce((m, o) => m + Math.hypot(o.x, o.y), 0) * 0.5;   // and don't move things for nothing
   };
   let best = null, bestCost = Infinity;
-  for (let trial = 0; trial < 10; trial++) {
+  for (let trial = 0, trials = units.length > 60 ? 1 : units.length > 25 ? 4 : 10; trial < trials; trial++) {
     const start = units.map((u, i) => {
       if (!trial || !u.free) return { x: 0, y: 0 };
       const ang = (i * 2.399 + trial * 1.7) % (2 * Math.PI), r = 250 + 90 * (trial % 4);
@@ -1957,7 +2023,7 @@ function finishEdit(cancel = false) {
   } else {
     n.text = text.trim() ? text : '';
     changed = e.isNew || n.text !== e.orig;
-    if (!e.isNew && n.text !== e.orig) { undoStack.push(e.snap); redoStack = []; markDirty(); }
+    if (!e.isNew && n.text !== e.orig) { undoStack.push(e.snap); redoStack = []; markDirty(); renameWikiRefs(e.orig, n.text); }
   }
   render();
   if (changed) autoTidy();
@@ -2058,6 +2124,8 @@ svg.addEventListener('pointerdown', e => {
   if (ls) { startLink(+ls.dataset.linkstart, true); svg.setPointerCapture(e.pointerId); return; }
   const nt = e.target.closest('[data-notes]');
   if (nt) { sel = +nt.dataset.notes; selLink = null; openNotes(sel); return; }
+  const pill = e.target.closest('[data-tag]');
+  if (pill) { setFocusTag(pill.dataset.tag); return; }
   const lk = e.target.closest('[data-link]');
   if (lk) { selLink = +lk.dataset.link; sel = null; render(); return; }
   const ed = e.target.closest('[data-edge]');
@@ -2149,7 +2217,8 @@ stage.addEventListener('drop', e => {
   if (f.type.startsWith('image/')) {
     const p = toWorld(e), hit = nodeAt(p);
     hit ? setImage(hit.id, f) : newImageNode(cur(), p, f);
-  } else openFile(f);
+  } else if (/\.zip$/i.test(f.name)) unzip(f).then(importVault).catch(err => toast("Couldn't read that vault: " + err.message));
+  else openFile(f);
 });
 document.addEventListener('paste', e => {
   if (editing) return;
@@ -2217,6 +2286,7 @@ document.addEventListener('keydown', e => {
     else if (k === '0') { e.preventDefault(); seen('fit'); fit(); }
     return;
   }
+  if (k === '/' && !e.altKey) { e.preventDefault(); return openFinder(); }
   if (selLink != null && doc.links[selLink] && (k === 'Enter' || k === 'F2' || (k.length === 1 && !e.altKey))) {
     e.preventDefault();   // a selected link: start writing its label (Space, F2 and Enter edit it as it is)
     return editLabel(selLink, k.length === 1 && k !== ' ' ? (doc.links[selLink].label || '') + k : undefined);
@@ -2225,7 +2295,7 @@ document.addEventListener('keydown', e => {
   else if (k === 'Enter') { e.preventDefault(); addSibling(); }
   else if (k === 'Delete' || k === 'Backspace') { e.preventDefault(); removeSelected(); }
   else if (k === 'F2' || k === ' ') { e.preventDefault(); edit(cur()); }
-  else if (k === 'Escape') { if (linkMode) cancelLink(); else { sel = null; selLink = null; render(); } }
+  else if (k === 'Escape') { if (linkMode) cancelLink(); else if (focusTag) setFocusTag(null); else { sel = null; selLink = null; render(); } }
   else if (k === 'ArrowLeft') { e.preventDefault(); nav(-1, 0); }
   else if (k === 'ArrowRight') { e.preventDefault(); nav(1, 0); }
   else if (k === 'ArrowUp') { e.preventDefault(); nav(0, -1); }
@@ -2412,8 +2482,18 @@ const plainText = n => {
 // One main idea: it's the title, its branches are headings. Several: each main idea is a heading and
 // its branches are subheadings (h2). Free bubbles get their own section. Every block also lists the
 // bubbles linked to it. "indent" is how far a block sits in a plain-text outline.
+// Which bubbles list a link, and which way: an arrow means it belongs to the bubble it points away
+// from (A → B: listed under A; A ← B: under B), both arrows under both, and no arrow under both
+// (as "to" from one, "from" from the other).
+function linkSides(l) {
+  const arrow = l.arrow || LINE_DEFAULTS.link.arrow;
+  if (arrow === 'end') return [[l.from, l.to, 'out']];
+  if (arrow === 'start') return [[l.to, l.from, 'out']];
+  if (arrow === 'both') return [[l.from, l.to, 'out'], [l.to, l.from, 'out']];
+  return [[l.from, l.to, 'out'], [l.to, l.from, 'in']];
+}
 function linkedNames(id) {
-  return Object.values(doc.links).flatMap(l => l.from === id ? [[l.to, l]] : l.to === id ? [[l.from, l]] : [])
+  return Object.values(doc.links).flatMap(l => linkSides(l).filter(([own]) => own === id).map(([, o]) => [o, l]))
     .map(([o, l]) => (plainText(N(o)) || 'untitled') + (l.label ? ` (${l.label})` : ''));
 }
 function outlineBlocks() {
@@ -2452,7 +2532,10 @@ function notesToMarkdown(html, { plain = false, headings = '###' } = {}) {
   const inline = nodes => {
     let out = '';
     for (const c of nodes) {
-      if (c.nodeType === Node.TEXT_NODE) { out += escMd(c.nodeValue.replace(/\s+/g, ' ')); continue; }
+      if (c.nodeType === Node.TEXT_NODE) {   // [[links]] stay as they are, so Obsidian still sees them
+        out += c.nodeValue.replace(/\s+/g, ' ').split(/(\[\[[^\[\]\n]+\]\])/).map((t, i) => i % 2 ? t : escMd(t)).join('');
+        continue;
+      }
       if (c.nodeType !== Node.ELEMENT_NODE) continue;
       const t = c.tagName, inner = () => inline(c.childNodes);
       if (t === 'B' || t === 'STRONG') out += wrap('**', inner());
@@ -2837,6 +2920,7 @@ async function docxBlob(withPicture) {
 async function exportOutline() {
   if (editing) finishEdit();
   const fmt = $('#outlineFmt').value;
+  if (fmt === 'obsidian') return saveExport(vaultZip(), slug() + ' (Obsidian vault).zip', 'zip');
   const blob = fmt === 'docx' ? await docxBlob($('#docxPic').checked)
     : new Blob([outline(fmt)], { type: fmt === 'md' ? 'text/markdown' : 'text/plain' });
   saveExport(blob, slug() + '.' + fmt, fmt);
@@ -2859,8 +2943,10 @@ async function copyOutline() {
   } catch { toast('Clipboard not available here — use Save outline'); }
 }
 function syncOutlineOptions() {
-  const docx = $('#outlineFmt').value === 'docx';
+  const fmt = $('#outlineFmt').value, docx = fmt === 'docx';
   $('#docxPicRow').hidden = $('#docxNote').hidden = !docx;
+  $('#vaultNote').hidden = fmt !== 'obsidian';
+  $('#bCopyOutline').hidden = fmt === 'obsidian';
 }
 function closeMenu() {
   for (const m of document.querySelectorAll('.menu')) m.hidden = true;
@@ -3097,7 +3183,7 @@ function sanitizeNotes(html) {
   const out = document.createElement('div');
   const walk = (from, to) => {
     for (const node of from.childNodes) {
-      if (node.nodeType === Node.TEXT_NODE) { to.appendChild(document.createTextNode(node.nodeValue)); continue; }
+      if (node.nodeType === Node.TEXT_NODE) { to.appendChild(document.createTextNode(node.nodeValue.replace(/\u200b/g, ''))); continue; }
       if (node.nodeType !== Node.ELEMENT_NODE || DROP_TAGS.test(node.tagName)) continue;
       const tag = node.tagName.toUpperCase(), rule = NOTE_TAGS[tag];
       if (!rule) { walk(node, to); continue; }   // unknown or unwrapped tag: keep its text
@@ -3146,6 +3232,7 @@ function syncNotesPanel() {
   if (notesFor == null || !N(notesFor) || (sel != null && sel !== notesFor)) showNotesFor(sel);
   const n = notesFor != null && N(notesFor);
   $('#notesTitle').textContent = n ? (plainText(n) || 'Untitled bubble') : 'Select a bubble to see its notes';
+  showNoteLinks(n);
 }
 function showNotesFor(id) {
   flushNotes();
@@ -3154,6 +3241,7 @@ function showNotesFor(id) {
   notesEl.innerHTML = n ? sanitizeNotes(n.notes) : '';
   notesEl.contentEditable = n ? 'true' : 'false';
   notesCommitted = false;
+  markWikiLinks();
 }
 function notesChanged() { clearTimeout(notesTimer); notesTimer = setTimeout(flushNotes, 400); }
 // Write the panel's content into the bubble. The first change of each visit is one undo step.
@@ -3165,6 +3253,7 @@ function flushNotes() {
   if ((n.notes || undefined) === next) return;
   if (!notesCommitted) { commit(); notesCommitted = true; } else markDirty();
   if (next) n.notes = next; else delete n.notes;
+  syncNoteLinks(n);
   render();
 }
 // The diagram is being replaced (undo, open, new): forget unsaved typing instead of writing it into the new one.
@@ -3241,18 +3330,25 @@ function tableAction(action) {
   notesChanged();
 }
 
-notesEl.addEventListener('input', notesChanged);
+notesEl.addEventListener('input', e => { notesChanged(); if (e.inputType === 'insertText' && e.data) markdownShortcut(e.data); markWikiLinks(); });
 notesEl.addEventListener('focusin', () => { notesCommitted = false; });
-notesEl.addEventListener('blur', flushNotes);
+notesEl.addEventListener('blur', () => { flushNotes(); markWikiLinks(); });
 notesEl.addEventListener('keydown', e => {
   const mod = e.ctrlKey || e.metaKey, k = e.key.toLowerCase();
   if (e.key === 'Escape') { e.preventDefault(); flushNotes(); notesEl.blur(); }
+  else if (e.key === 'Enter' && !e.shiftKey && caretBlock() && caretBlock() !== notesEl && /^\s*(---|\*\*\*|___)\s*$/.test(caretBlock().textContent)) {
+    e.preventDefault();   // "---" then Enter: a divider line
+    caretBlock().textContent = '';
+    noteCmd('insertHorizontalRule');
+  }
   else if (mod && e.key === 'Enter') { e.preventDefault(); closeNotes(); }
   else if (mod && k === 's') { e.preventDefault(); flushNotes(); e.shiftKey ? saveAs() : save(); }
   else if (mod && k === 'k') { e.preventDefault(); addLink(); }
   else if (e.key === 'Tab' && caretBlock()?.closest('li')) { e.preventDefault(); noteCmd(e.shiftKey ? 'outdent' : 'indent'); }
 });
 notesEl.addEventListener('click', e => {
+  const mark = (e.ctrlKey || e.metaKey) && noteMarkAt(e);
+  if (mark) { e.preventDefault(); flushNotes(); return mark.tag ? setFocusTag(mark.tag) : followWiki(mark.wiki); }
   const a = e.target.closest('a');
   if (a && (e.ctrlKey || e.metaKey)) { e.preventDefault(); window.open(a.href, '_blank', 'noopener,noreferrer'); }
 });
@@ -3496,6 +3592,291 @@ function applyMacLabels() {
   for (const sp of document.querySelectorAll('#hints span')) sp.innerHTML = sp.innerHTML.replace('scroll to zoom · drag background to pan', 'pinch to zoom · scroll or drag the background to pan');
 }
 
+/* ---------- tags ----------
+   #tags anywhere in a bubble's notes (like Obsidian: letters, numbers, _, - and /, not only digits).
+   They show as pills under the bubble's text, coloured in rainbow order of first appearance; click one
+   to highlight every bubble with that tag (click it again, or press Esc, to stop). */
+const TAG = /(^|[\s(>,])#([\p{L}\p{N}_][\p{L}\p{N}_\/-]*)/gu;
+const tagCache = new Map();
+let focusTag = null;
+function tagsOf(n) {
+  if (!n?.notes) return [];
+  let t = tagCache.get(n.notes);
+  if (!t) {
+    const text = n.notes.replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&');
+    t = [...new Set([...text.matchAll(TAG)].map(m => m[2].toLowerCase()))].filter(x => !/^[\d/-]+$/.test(x));
+    if (tagCache.size > 2000) tagCache.clear();
+    tagCache.set(n.notes, t);
+  }
+  return t;
+}
+// Each tag gets one colour everywhere: the next in rainbow order, skipping any colour (or its rainbow
+// neighbours) that a bubble carrying the tag already is, so a pill never melts into its bubble.
+function tagColors() {
+  const out = {}, onColors = {};
+  const ns = all().sort((a, b) => a.id - b.id);
+  for (const n of ns) for (const t of tagsOf(n)) (onColors[t] ??= new Set()).add(PALETTE.indexOf(n.color));
+  let next = 0;
+  for (const n of ns) for (const t of tagsOf(n)) {
+    if (out[t]) continue;
+    const clash = i => [...onColors[t]].some(c => c >= 0 && Math.min(Math.abs(c - i), PALETTE.length - Math.abs(c - i)) <= 1);
+    let pick = -1;
+    for (let k = 0; k < PALETTE.length && pick < 0; k++) if (!clash((next + k) % PALETTE.length)) pick = (next + k) % PALETTE.length;
+    for (let k = 0; k < PALETTE.length && pick < 0; k++) if (!onColors[t].has((next + k) % PALETTE.length)) pick = (next + k) % PALETTE.length;
+    if (pick < 0) pick = next % PALETTE.length;
+    out[t] = PALETTE[pick];
+    next = pick + 1;
+  }
+  return out;
+}
+function setFocusTag(t) {
+  focusTag = t && focusTag !== t ? t : null;
+  render();
+  if (focusTag) toast(`Showing #${focusTag}: ${all().filter(n => tagsOf(n).includes(focusTag)).length} bubbles. Esc to stop`);
+}
+
+/* ---------- the finder: / to jump to any bubble ----------
+   Matches names first (start of the name, then start of a word, then anywhere), then words in the
+   notes. "#tag" lists the bubbles with that tag. Enter or a click goes there (unfolding if needed). */
+const finder = $('#finder'), finderInput = $('#finderInput'), finderList = $('#finderList');
+let finderHits = [], finderIndex = 0;
+function openFinder() {
+  if (editing) finishEdit();
+  finder.hidden = false;
+  finderInput.value = '';
+  findBubbles();
+  finderInput.focus();
+}
+function closeFinder() { finder.hidden = true; finderInput.blur(); }
+function findBubbles() {
+  const q = finderInput.value.trim().toLowerCase(), colors = tagColors();
+  const plain = n => (n.notes || '').replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ').toLowerCase();
+  const scored = [];
+  for (const n of all()) {
+    const name = bubbleName(n).toLowerCase() || (n.img ? 'picture' : 'untitled');
+    let score = -1;
+    if (!q) score = 0;
+    else if (q.startsWith('#')) { const t = q.slice(1); if (tagsOf(n).some(x => x === t)) score = 3; else if (tagsOf(n).some(x => x.startsWith(t))) score = 2; }
+    else if (name.startsWith(q)) score = 4;
+    else if (name.split(/[\s\-_/(]+/).some(w => w.startsWith(q))) score = 3;
+    else if (name.includes(q)) score = 2;
+    else if (plain(n).includes(q)) score = 1;
+    if (score >= 0) scored.push([score, n]);
+  }
+  scored.sort((a, b) => b[0] - a[0] || bubbleName(a[1]).length - bubbleName(b[1]).length);
+  finderHits = scored.slice(0, 12).map(x => x[1]);
+  finderIndex = 0;
+  finderList.innerHTML = finderHits.map((n, i) => {
+    const where = n.parent !== null ? 'in ' + (bubbleName(N(n.parent)) || 'untitled') : isFree(n) ? 'free bubble' : 'main idea';
+    const tags = tagsOf(n).slice(0, 3).map(t => `<span class="tg" style="background:${colors[t]};color:${inkOn(colors[t])}">#${esc(t)}</span>`).join('');
+    return `<div class="fd${i ? '' : ' on'}" data-i="${i}"><span class="dot" style="background:${THEMES[appTheme].c(shadeOf(n))}"></span><span class="nm">${esc(bubbleName(n) || (n.img ? 'Picture' : 'Untitled'))}</span>${tags}<span class="where">${esc(where)}</span></div>`;
+  }).join('');
+}
+function finderGo(i) {
+  const n = finderHits[i];
+  closeFinder();
+  if (!n) return;
+  let changed = false;
+  for (let p = n.parent; p !== null; p = N(p).parent) if (N(p).collapsed) { if (!changed) commit(); delete N(p).collapsed; changed = true; }
+  sel = n.id; selLink = null;
+  render(); revealNode(n.id);
+  if (changed) autoTidy();
+}
+finderInput.addEventListener('input', findBubbles);
+finderInput.addEventListener('keydown', e => {
+  e.stopPropagation();
+  const mark = () => { for (const el of finderList.children) el.classList.toggle('on', +el.dataset.i === finderIndex); finderList.children[finderIndex]?.scrollIntoView({ block: 'nearest' }); };
+  if (e.key === 'Escape') { e.preventDefault(); closeFinder(); }
+  else if (e.key === 'Enter') { e.preventDefault(); finderGo(finderIndex); }
+  else if (e.key === 'ArrowDown') { e.preventDefault(); finderIndex = Math.min(finderHits.length - 1, finderIndex + 1); mark(); }
+  else if (e.key === 'ArrowUp') { e.preventDefault(); finderIndex = Math.max(0, finderIndex - 1); mark(); }
+});
+finderInput.addEventListener('blur', () => setTimeout(() => { if (!finder.contains(document.activeElement)) finder.hidden = true; }, 150));
+finderList.addEventListener('pointerdown', e => { const r = e.target.closest('[data-i]'); if (r) { e.preventDefault(); finderGo(+r.dataset.i); } });
+
+/* ---------- [[links]] in notes ----------
+   Like Obsidian: writing [[Name]] in a bubble's notes links it to the bubble called Name (also
+   [[Name|shown text]] and [[Name#section]]). Those links appear on the diagram too, marked note: true,
+   and follow the notes: delete the [[Name]] and its link goes. Links drawn on the diagram show up in
+   the notes panel's Links list, so either way round, both places agree. */
+const WIKI = /\[\[([^\[\]\n|#]+)(?:[#|][^\[\]\n]*)?\]\]/g;
+const bubbleName = n => (n?.text || '').replace(/\s*\n\s*/g, ' ').trim();
+function findBubble(name) {
+  const key = name.trim().toLowerCase();
+  return all().sort((a, b) => a.id - b.id).find(n => bubbleName(n).toLowerCase() === key) || null;
+}
+const wikiNames = html => [...new DOMParser().parseFromString(`<body>${html || ''}</body>`, 'text/html').body.textContent.matchAll(WIKI)].map(m => m[1].trim());
+// Make the diagram's links from n match the [[links]] in its notes.
+function syncNoteLinks(n) {
+  const want = new Set(wikiNames(n.notes).map(findBubble).filter(t => t && t.id !== n.id).map(t => t.id));
+  const from = Object.values(doc.links).filter(l => l.from === n.id);
+  for (const l of from) if (l.note && !want.has(l.to)) delete doc.links[l.id];
+  for (const to of want) if (!from.some(l => l.to === to && doc.links[l.id])) {
+    const id = doc.nextId++;
+    doc.links[id] = { id, from: n.id, to, note: true };
+  }
+}
+// Renaming a bubble updates [[Old name]] wherever it's written, so links don't break.
+function renameWikiRefs(oldText, newText) {
+  const from = esc(oldText.replace(/\s*\n\s*/g, ' ').trim()), to = esc(newText.replace(/\s*\n\s*/g, ' ').trim());
+  if (!from || !to || from === to) return;
+  const re = new RegExp('\\[\\[\\s*' + from.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*(?=[\\]|#])', 'gi');
+  for (const n of all()) if (n.notes && re.test(n.notes)) { re.lastIndex = 0; n.notes = n.notes.replace(re, '[[' + to); }
+}
+// Show [[links]] and #tags in the open notes (display only: they're saved as plain text).
+const NOTE_MARKS = /\[\[([^\[\]\n|#]+)(?:[#|][^\[\]\n]*)?\]\]|(^|[\s(>,])#([\p{L}\p{N}_][\p{L}\p{N}_\/-]*)/gu;
+// Colours them with the browser's text highlighting, which leaves the text itself untouched (wrapping
+// them in elements made new typing pick up the same look).
+function noteMarks() {
+  const found = [], walker = document.createTreeWalker(notesEl, NodeFilter.SHOW_TEXT);
+  for (let t; (t = walker.nextNode());) for (const m of t.nodeValue.matchAll(NOTE_MARKS)) {
+    if (m[1]) found.push({ node: t, start: m.index, end: m.index + m[0].length, wiki: m[1].trim() });
+    else if (!/^[\d/-]+$/.test(m[3])) found.push({ node: t, start: m.index + m[2].length, end: m.index + m[0].length, tag: m[3].toLowerCase() });
+  }
+  return found;
+}
+function markWikiLinks() {
+  if (!window.CSS?.highlights || typeof Highlight === 'undefined') return;
+  const wl = new Highlight(), missing = new Highlight(), tags = new Highlight();
+  for (const f of noteMarks()) {
+    const r = document.createRange();
+    r.setStart(f.node, f.start); r.setEnd(f.node, f.end);
+    (f.tag ? tags : findBubble(f.wiki) ? wl : missing).add(r);
+  }
+  CSS.highlights.set('note-wl', wl); CSS.highlights.set('note-missing', missing); CSS.highlights.set('note-tag', tags);
+}
+// The [[link]] or #tag under the mouse, if any.
+function noteMarkAt(e) {
+  let node, offset;
+  if (document.caretPositionFromPoint) { const p = document.caretPositionFromPoint(e.clientX, e.clientY); node = p?.offsetNode; offset = p?.offset; }
+  else if (document.caretRangeFromPoint) { const r = document.caretRangeFromPoint(e.clientX, e.clientY); node = r?.startContainer; offset = r?.startOffset; }
+  return node ? noteMarks().find(f => f.node === node && offset >= f.start && offset <= f.end) : null;
+}
+// Markdown as you type, like Obsidian: "# " heading, "- " list, "1. " numbered list, "> " quote at the
+// start of a line; **bold**, *italic*, `code` and ~~strike~~ when you type the closing marks.
+function markdownShortcut(ch) {
+  const sel = getSelection();
+  if (!sel.rangeCount || !sel.isCollapsed) return;
+  const r = sel.getRangeAt(0), node = r.startContainer;
+  if (node.nodeType !== Node.TEXT_NODE || !notesEl.contains(node)) return;
+  if (ch === ' ' || ch === '\u00a0') {
+    const block = node.parentElement.closest('p, div, h2, h3, li, blockquote, td, th');
+    const start = block && notesEl.contains(block) && block !== notesEl ? block : notesEl;
+    const pre = document.createRange();
+    pre.setStart(start, 0); pre.setEnd(node, r.startOffset);
+    const t = pre.toString().replace(/\u00a0/g, ' '), inList = !!node.parentElement.closest('li');   // browsers type a space at the end as a non-breaking one
+    const rule = /^#{1,2} $/.test(t) ? ['formatBlock', 'h2'] : /^#{3,6} $/.test(t) ? ['formatBlock', 'h3'] : t === '> ' ? ['formatBlock', 'blockquote']
+      : /^[-*+] $/.test(t) && !inList ? ['insertUnorderedList'] : /^1[.)] $/.test(t) && !inList ? ['insertOrderedList'] : null;
+    if (!rule) return;
+    if (r.startOffset < t.length) return;   // the marker isn't all in this bit of text: leave it be
+    const marker = document.createRange();   // remove just the marker, keeping the cursor in place
+    marker.setStart(node, r.startOffset - t.length); marker.setEnd(node, r.startOffset);
+    marker.deleteContents();
+    if (!node.nodeValue) node.parentNode.insertBefore(document.createElement('br'), node.nextSibling);
+    sel.collapse(node, 0);
+    // Run just after this keystroke has finished (browsers won't start one editing command inside another).
+    setTimeout(() => { document.execCommand(rule[0], false, rule[1] ?? null); notesChanged(); });
+    return;
+  }
+  const text = node.nodeValue.slice(0, r.startOffset);
+  const pats = { '*': [[/\*\*([^*\n]+)\*\*$/, 'b', 0], [/(^|[^*\\])\*([^*\s](?:[^*\n]*[^*\s])?)\*$/, 'i', 1]], '_': [[/__([^_\n]+)__$/, 'b', 0]],
+    '`': [[/`([^`\n]+)`$/, 'code', 0]], '~': [[/~~([^~\n]+)~~$/, 's', 0]] }[ch] || [];
+  for (const [re, tag, pre] of pats) {
+    const m = text.match(re);
+    if (!m) continue;
+    const range = document.createRange();
+    range.setStart(node, r.startOffset - m[0].length + (pre ? m[1].length : 0)); range.setEnd(node, r.startOffset);
+    range.deleteContents();
+    const el = document.createElement(tag);
+    el.textContent = m[pre ? 2 : 1];
+    range.insertNode(el);
+    const after = document.createTextNode('​');   // somewhere to keep typing, outside the formatting
+    el.after(after);
+    sel.collapse(after, 1);
+    return notesChanged();
+  }
+}
+// Go to the bubble a [[link]] names, making it (as a free bubble beside this one) if there isn't one.
+function followWiki(name) {
+  flushNotes();
+  let t = findBubble(name);
+  if (!t) {
+    const here = N(notesFor ?? cur());
+    commit();
+    const id = doc.nextId++;
+    doc.nodes[id] = { id, text: name, x: here.x + 260, y: here.y + 120, parent: null, kind: 'free', color: ROOT_FILL, shape: 'text' };
+    for (const n of all()) if (n.notes && wikiNames(n.notes).some(w => w.toLowerCase() === name.toLowerCase())) syncNoteLinks(n);
+    t = N(id);
+    toast(`Made a new bubble "${name}"`);
+  }
+  sel = t.id; selLink = null;
+  render(); revealNode(t.id);
+}
+// The notes panel's Links list: every link this bubble has (in its arrow's direction), each showing
+// which way it goes, its label to type into (sized to fit), the bubble at the other end, and ×.
+// "Add a link…" at the bottom links this bubble to another by name. Not rebuilt while you're typing in it.
+function showNoteLinks(n, force) {
+  const box = $('#notesLinks');
+  if (!force && box.contains(document.activeElement)) return;
+  if (!n) { box.innerHTML = ''; box.dataset.for = ''; return; }
+  const rows = Object.values(doc.links).flatMap(l => linkSides(l).filter(([own]) => own === n.id).map(([, o, dir]) => [l, o, dir])).map(([l, o, dir]) => {
+    const other = N(o), arrow = l.arrow || 'none', mine = l.from === n.id;
+    // Seen from this bubble: an arrow pointing at the other bubble shows as →, both ways as ↔, none as —.
+    const sym = arrow === 'both' ? '↔' : arrow === 'none' ? '—' : '→';
+    const hint = l.note ? (mine ? 'from [[' + bubbleName(other) + ']] in these notes' : 'from [[' + bubbleName(N(n.id)) + ']] in its notes') : '';
+    return `<div class="nl"><span class="dir" title="${arrow === 'both' ? 'Arrows both ways' : arrow === 'none' ? 'No arrow' : 'Points to the other bubble'}">${sym}</span>`
+      + `<input class="lbl" data-label="${l.id}" value="${esc(l.label || '')}" placeholder="${l.note ? 'mentions' : 'label'}" title="${esc(hint || 'What this link means')}">`
+      + `<button class="go" data-go="${other.id}">[[${esc(bubbleName(other) || 'untitled')}]]</button>`
+      + `<button class="del" data-del="${l.id}" title="Delete this link">×</button></div>`;
+  });
+  box.dataset.for = n.id;
+  box.innerHTML = `<div class="nl-title">Links</div>${rows.join('')}`
+    + `<div class="nl add"><input id="nlAdd" list="nlNames" placeholder="Add a link: type a bubble's name, then Enter"><datalist id="nlNames"></datalist></div>`;
+  for (const i of box.querySelectorAll('.lbl')) fitLabel(i);
+}
+// Size a label box to its text (or its placeholder when empty).
+function fitLabel(input) {
+  mctx.font = `600 13px ${FONT}`;
+  input.style.width = Math.ceil(mctx.measureText(input.value || input.placeholder).width + 18) + 'px';
+}
+function linkFromPanel(l) {   // the link a Links-list control belongs to, with the bubble the panel is showing
+  return { l: doc.links[l], here: +$('#notesLinks').dataset.for };
+}
+$('#notesLinks').addEventListener('click', e => {
+  const go = e.target.closest('[data-go]'), del = e.target.closest('[data-del]');
+  if (go) { flushNotes(); sel = +go.dataset.go; selLink = null; render(); revealNode(sel); }
+  else if (del) { const { l } = linkFromPanel(+del.dataset.del); if (l) { selLink = l.id; sel = l.from; removeSelected(); sel = +$('#notesLinks').dataset.for; render(); showNoteLinks(N(sel), true); } }
+});
+$('#notesLinks').addEventListener('input', e => { if (e.target.classList.contains('lbl')) fitLabel(e.target); });
+$('#notesLinks').addEventListener('focusin', e => {
+  if (e.target.id === 'nlAdd') $('#nlNames').innerHTML = all().map(bubbleName).filter(Boolean).sort().map(t => `<option value="${esc(t)}">`).join('');
+});
+$('#notesLinks').addEventListener('keydown', e => {
+  e.stopPropagation();
+  if (e.key === 'Enter') { e.preventDefault(); e.target.blur(); }
+  else if (e.key === 'Escape') { e.preventDefault(); if (e.target.dataset.label) e.target.value = doc.links[e.target.dataset.label]?.label || ''; else e.target.value = ''; e.target.blur(); }
+});
+$('#notesLinks').addEventListener('focusout', e => {
+  const t = e.target, here = +$('#notesLinks').dataset.for;
+  if (t.dataset.label) {   // a label was typed
+    const l = doc.links[t.dataset.label], v = t.value.replace(/\s+/g, ' ').trim().slice(0, 120);
+    if (l && v !== (l.label || '')) { commit(); if (v) l.label = v; else delete l.label; render(); }
+  } else if (t.id === 'nlAdd' && t.value.trim()) {   // a new link, by name (a new free bubble if no bubble has that name)
+    const name = t.value.replace(/^\[\[|\]\]$/g, '').trim();
+    let to = findBubble(name);
+    commit();
+    if (!to) {
+      const me = N(here), id = doc.nextId++;
+      doc.nodes[id] = { id, text: name, x: me.x + 260, y: me.y + 120, parent: null, kind: 'free', color: ROOT_FILL, shape: 'text' };
+      to = N(id);
+      toast(`Made a new bubble "${name}"`);
+    }
+    if (to.id !== here) { const id = doc.nextId++; doc.links[id] = { id, from: here, to: to.id }; }
+    render();
+  }
+  setTimeout(() => { if (!$('#notesLinks').contains(document.activeElement)) showNoteLinks(N(+$('#notesLinks').dataset.for), true); });
+});
+
 /* ---------- link labels ---------- */
 // A short label on a link ("worked for", "created"), read from the first bubble to the second.
 // Double-click a link, or select it and start typing (or press Enter), to write one.
@@ -3534,7 +3915,7 @@ svg.addEventListener('dblclick', e => {
 
 /* ---------- version, installing and updates ---------- */
 // build.py stamps these into each release; the source copy says 'dev' and never looks for updates.
-const APP_VERSION = '2026.10.21.1206', APP_UPDATE_URL = 'https://raw.githubusercontent.com/BannerZerk46/spider-diagram/main/dist/';
+const APP_VERSION = '2026.10.21.1424', APP_UPDATE_URL = 'https://raw.githubusercontent.com/BannerZerk46/spider-diagram/main/dist/';
 let aboutApp = { version: APP_VERSION, updates: false, canInstall: false, installed: false };
 const INSTALL_STORE = 'spider-diagram:no-install-offer';
 async function loadAbout() {
@@ -3705,7 +4086,7 @@ const TUT_STEPS = [
   { title: 'Notes', seed: true, target: '#bNotes',
     text: () => `<p>For anything too long for a bubble, select it and click ${ui('Notes')} (<kbd>Ctrl+Enter</kbd>).</p>
       <p>The notes panel takes headings, lists, bold, links, tables and pictures. Write something, then close the panel.</p>
-      <p class="tip">Bubbles with notes get a small notes icon. Notes are included when you export a Word or Markdown outline.</p>`,
+      <p class="tip">Markdown works as you type (<b>#</b> heading, <b>-</b> list, <b>**bold**</b>). Write <b>[[Name]]</b> to link to another bubble, and <b>#tags</b> to tag this one: tags show on the bubble, and <kbd>/</kbd> finds any bubble by name or tag.</p>`,
     done: () => !notesOpen() && all().some(n => n.notes && n.notes.replace(/<[^>]*>/g, '').trim()) },
   { title: 'Fold branches away', seed: true, target: '#bCollapse',
     text: () => `<p>Select a bubble that has branches and click ${ui('Collapse')} (<kbd>Ctrl+/</kbd>). It folds into a single bubble, with a badge showing how many ideas are tucked away.</p>
