@@ -65,6 +65,15 @@
   button.primary { background: var(--accent); color: #fff; border-color: var(--accent); font-weight: 600; }
   button.primary:hover { background: #1d4ed8; }
   button.icon { min-width: 30px; padding: 4px 7px; }
+  .menu.left { right: auto; left: 0; }
+  .menu.narrow { width: 260px; }
+  .menu.list { width: 230px; padding: 6px; gap: 2px; }
+  .menu.list > button { justify-content: flex-start; border: 0; background: none; padding: 7px 10px; font-size: 13.5px; width: 100%; }
+  .menu.list > button:hover { background: var(--hover); }
+  .menu.list .kb { margin-left: auto; color: var(--muted); font-size: 12px; }
+  .row.tools .menu-wrap { position: relative; }
+  #colorDot { width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--panel); box-shadow: 0 0 0 1px var(--line); background: var(--muted); }
+  #swatches { display: grid; grid-template-columns: repeat(6, 26px); gap: 8px; justify-content: start; padding: 2px; border: 0; }
   .swatch { width: 22px; height: 22px; padding: 0; border-radius: 50%; border: 2px solid var(--panel); box-shadow: 0 0 0 1px var(--line); }
   .swatch.on { box-shadow: 0 0 0 2px var(--ink); }
   label.check { display: flex; align-items: center; gap: 5px; font-size: 13px; cursor: pointer; white-space: nowrap; }
@@ -93,10 +102,10 @@
   #hints button { pointer-events: auto; padding: 3px 8px; font-size: 12px; color: var(--muted); background: var(--hint); }
   #hints span { background: var(--hint); border: 1px solid var(--line); border-radius: 6px; padding: 3px 7px; }
   kbd { font: 600 11px ui-monospace, monospace; color: var(--ink); }
-  #toast {
-    position: absolute; top: 14px; left: 50%; transform: translate(-50%, -8px); opacity: 0;
+  #toast {   /* fixed, so messages show on the homepage too */
+    position: fixed; top: 64px; left: 50%; transform: translate(-50%, -8px); opacity: 0; z-index: 50; max-width: calc(100vw - 32px); text-align: center;
     background: var(--toast); color: var(--toast-ink); padding: 7px 14px; border-radius: 8px; font-size: 13px;
-    transition: opacity .2s, transform .2s; pointer-events: none; z-index: 3;
+    transition: opacity .2s, transform .2s; pointer-events: none;
   }
   #tut {
     position: fixed; right: 20px; bottom: 20px; z-index: 40; width: 460px; max-height: calc(100vh - 32px); overflow: auto;
@@ -206,6 +215,12 @@
   .home-folders .folder { display: inline-flex; align-items: center; gap: 6px; padding: 4px 6px 4px 10px; border: 1px solid var(--line); border-radius: 999px; background: var(--panel); }
   .home-folders .folder button { padding: 0 6px; border: 0; background: none; color: var(--muted); }
   .home-folders .note { color: var(--muted); flex-basis: 100%; }
+  .home-bar .menu-wrap { position: relative; }
+  .home-bar #homeSearch { flex: 1 1 220px; min-width: 160px; }
+  .menu-foot { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; margin-top: 4px; padding: 8px 10px 4px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+  .menu-foot button { font-size: 12.5px; padding: 3px 10px; }
+  .home-tools { display: flex; align-items: center; gap: 10px; padding: 10px 20px 0; }
+  .home-tools .home-status { flex: 1; padding: 0; }
   .home-status { padding: 10px 20px 0; color: var(--muted); font-size: 13px; min-height: 18px; }
   .home-grid { flex: 1; overflow: auto; padding: 14px 20px 24px; display: grid; gap: 16px; align-content: start;
     grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); }
@@ -277,6 +292,7 @@
   <symbol id="i-italic" viewBox="0 0 24 24"><path d="M19 4h-9M14 20H5M15 4 9 20"/></symbol>
   <symbol id="i-underline" viewBox="0 0 24 24"><path d="M6 4v6a6 6 0 0 0 12 0V4M4 20h16"/></symbol>
   <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+  <symbol id="i-dots" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/></symbol>
   <symbol id="i-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3M12 17h.01"/></symbol>
   <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M10 11v6M14 11v6"/></symbol>
   <symbol id="i-line" viewBox="0 0 24 24"><path d="M4 19c4-1 5-6 8-7s5 2 8-7"/><circle cx="4" cy="19" r="1.5"/><circle cx="20" cy="5" r="1.5"/></symbol>
@@ -288,16 +304,27 @@
       <button id="bHome" class="icon" title="All your diagrams"><svg class="ic" aria-hidden="true"><use href="#i-home"/></svg></button>
       <span id="docname" title="Current file"></span>
     </div>
-    <div class="group">
-      <button id="bNew" title="New diagram">New</button>
-      <button id="bOpen" title="Open a .spider file (Ctrl+O) — or drag one onto the canvas">Open…</button>
-      <button id="bSave" title="Save (Ctrl+S)">Save</button>
-      <button id="bSaveAs" title="Save to a new file (Ctrl+Shift+S)">Save as…</button>
+    <div class="group menu-wrap">
+      <button id="bFileMenu" aria-haspopup="true" aria-expanded="false" title="New, open and save">File <svg class="ic chev" aria-hidden="true"><use href="#i-chevron"/></svg></button>
+      <div id="fileMenu" class="menu list left" hidden>
+        <button id="bNew" title="Start a new diagram">New diagram</button>
+        <button id="bOpen" title="Open a .spider file (or drag one onto the window)">Open…<span class="kb">Ctrl+O</span></button>
+        <button id="bSave" title="Save this diagram">Save<span class="kb">Ctrl+S</span></button>
+        <button id="bSaveAs" title="Save to a new file">Save as…<span class="kb">Ctrl+Shift+S</span></button>
+      </div>
     </div>
-    <div class="spacer"></div>
+    <div class="group menu-wrap">
+      <button id="bAddMenu" aria-haspopup="true" aria-expanded="false" title="Add bubbles (the keys are quicker: Tab and Enter)">Insert <svg class="ic chev" aria-hidden="true"><use href="#i-chevron"/></svg></button>
+      <div id="addMenu" class="menu list left" hidden>
+        <button id="bChild" title="Add a branch to the selected bubble"><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg> Branch<span class="kb">Tab</span></button>
+        <button id="bSibling" title="Add a bubble next to the selected one"><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg> Sibling<span class="kb">Enter</span></button>
+        <button id="bMain" title="Another main idea, with its own branches"><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg> Main idea</button>
+        <button id="bFree" title="A bubble on its own"><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg> Free bubble<span class="kb">Double-click</span></button>
+      </div>
+    </div>
     <div class="group menu-wrap">
       <button id="bDiagramMenu" aria-haspopup="true" aria-expanded="false" title="Settings for the whole diagram">Diagram <svg class="ic chev" aria-hidden="true"><use href="#i-chevron"/></svg></button>
-      <div id="diagramMenu" class="menu" hidden>
+      <div id="diagramMenu" class="menu left" hidden>
         <div class="menu-sec">
           <div class="menu-title">Layout</div>
           <label class="check" title="Re-arrange the diagram automatically after you add, edit, move, collapse or delete a bubble"><input type="checkbox" id="sAuto"> Auto-tidy</label>
@@ -321,10 +348,12 @@
           </div>
           <p class="menu-note">Recolours the main branches red → pink in order, clockwise from the top. Undo puts the old colours back.</p>
         </div>
-        <div class="menu-sec">
-          <div class="menu-row"><span class="menu-note grow" id="versionNote"></span><button id="bCheckUpdate" hidden>Check for updates</button></div>
-        </div>
       </div>
+    </div>
+    <div class="spacer"></div>
+    <div class="group">
+      <button id="bUndo" class="icon" title="Undo (Ctrl+Z)"><svg class="ic" aria-hidden="true"><use href="#i-undo"/></svg></button>
+      <button id="bRedo" class="icon" title="Redo (Ctrl+Shift+Z)"><svg class="ic" aria-hidden="true"><use href="#i-redo"/></svg></button>
     </div>
     <div class="group menu-wrap">
       <button id="bExportMenu" class="primary" aria-haspopup="true" aria-expanded="false" title="Export as an image or a text outline">Export <svg class="ic chev" aria-hidden="true"><use href="#i-chevron"/></svg></button>
@@ -361,43 +390,46 @@
       <button id="bTheme" class="icon" title="Switch between light and dark mode"><svg class="ic" aria-hidden="true"><use href="#i-moon"/></svg></button>
     </div>
   </div>
-  <div class="row">
+  <div class="row tools">
     <div class="group">
-      <button id="bChild" title="Add a branch to the selected idea (Tab)"><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg> Branch</button>
-      <button id="bSibling" title="Add an idea next to the selected one (Enter)"><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg> Sibling</button>
-      <button id="bMain" title="Add another main idea to this diagram"><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg> Main idea</button>
-      <button id="bFree" title="Add a free-floating bubble (or double-click empty space with nothing selected)"><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg> Free</button>
-      <button id="bDelete" class="icon" title="Delete the selected bubble and its branches, or the selected link (Delete)"><svg class="ic" aria-hidden="true"><use href="#i-trash"/></svg></button>
-      <button id="bCollapse" title="Fold this branch into one bubble, or unfold it (Ctrl+/)">Collapse</button>
-    </div>
-    <div class="group">
-      <button id="bUndo" class="icon" title="Undo (Ctrl+Z)"><svg class="ic" aria-hidden="true"><use href="#i-undo"/></svg></button>
-      <button id="bRedo" class="icon" title="Redo (Ctrl+Shift+Z)"><svg class="ic" aria-hidden="true"><use href="#i-redo"/></svg></button>
       <button id="bTidy" title="Tidy layout: arrange every main idea's branches neatly, and pack the main ideas together">Tidy</button>
       <button id="bFit" title="Fit diagram to screen (Ctrl+0)">Fit</button>
     </div>
-  </div>
-  <div class="row">
     <div class="group">
-      <button id="bNotes" title="Notes for this bubble — longer text, pictures, tables, links (Ctrl+Enter)"><svg class="ic" aria-hidden="true"><use href="#i-notes"/></svg> Notes</button>
+      <button id="bNotes" title="Notes for this bubble: longer text, pictures, tables, [[links]] and #tags (Ctrl+Enter)"><svg class="ic" aria-hidden="true"><use href="#i-notes"/></svg> Notes</button>
+    </div>
+    <div class="group">
       <button id="fBold" class="icon" title="Bold (Ctrl+B)"><svg class="ic" aria-hidden="true"><use href="#i-bold"/></svg></button>
       <button id="fItalic" class="icon" title="Italic (Ctrl+I)"><svg class="ic" aria-hidden="true"><use href="#i-italic"/></svg></button>
       <button id="fSmaller" class="icon" title="Smaller text (Ctrl+-)">A−</button>
       <button id="fBigger" class="icon" title="Bigger text (Ctrl+=)">A+</button>
-      <select id="fShape" title="Bubble shape">
-        <option value="">Auto shape</option><option value="pill">Pill</option><option value="box">Box</option>
-        <option value="ellipse">Ellipse</option><option value="text">Text only</option>
-      </select>
-      <select id="fFill" title="Bubble fill">
-        <option value="">Auto fill</option><option value="solid">Solid</option><option value="tint">Light</option><option value="white">White</option>
-      </select>
-      <button id="fReset" title="Clear this bubble's formatting">Reset</button>
-    </div>
-    <div class="group" id="swatches" title="Colour of the selected branch"></div>
-    <div class="group">
-      <button id="iAdd" title="Add or replace this bubble's picture — you can also paste (Ctrl+V) or drop one"><svg class="ic" aria-hidden="true"><use href="#i-image"/></svg> Picture…</button>
-      <select id="iSize" title="Picture size"><option value="S">Small</option><option value="M">Medium</option><option value="L">Large</option><option value="XL">X-Large</option></select>
-      <button id="iRemove" class="icon" title="Remove picture"><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg></button>
+      <div class="menu-wrap">
+        <button id="bStyleMenu" aria-haspopup="true" aria-expanded="false" title="Shape and fill of the selected bubble">Style <svg class="ic chev" aria-hidden="true"><use href="#i-chevron"/></svg></button>
+        <div id="styleMenu" class="menu left narrow" hidden>
+          <div class="menu-sec">
+            <div class="menu-row"><label class="grow">Shape <select id="fShape" title="Bubble shape"><option value="">Automatic</option><option value="pill">Pill</option><option value="box">Box</option><option value="ellipse">Ellipse</option><option value="text">Text only</option></select></label></div>
+            <div class="menu-row"><label class="grow">Fill <select id="fFill" title="Bubble fill"><option value="">Automatic</option><option value="solid">Solid</option><option value="tint">Light</option><option value="white">White</option></select></label></div>
+            <div class="menu-row"><span class="grow"></span><button id="fReset" title="Clear this bubble's formatting (bold, size, shape, fill)">Reset formatting</button></div>
+          </div>
+        </div>
+      </div>
+      <div class="menu-wrap">
+        <button id="bColorMenu" aria-haspopup="true" aria-expanded="false" title="Colour of the selected branch or link"><span id="colorDot"></span> <svg class="ic chev" aria-hidden="true"><use href="#i-chevron"/></svg></button>
+        <div id="colorMenu" class="menu left narrow" hidden>
+          <div id="swatches" title="Colour of the selected branch"></div>
+          <p class="menu-note">A branch's colour fades along it. The dark first colour makes a bubble start its own rainbow.</p>
+        </div>
+      </div>
+      <div class="menu-wrap">
+        <button id="bPicMenu" aria-haspopup="true" aria-expanded="false" title="A picture in the selected bubble"><svg class="ic" aria-hidden="true"><use href="#i-image"/></svg> <svg class="ic chev" aria-hidden="true"><use href="#i-chevron"/></svg></button>
+        <div id="picMenu" class="menu left narrow" hidden>
+          <div class="menu-sec">
+            <div class="menu-row"><button id="iAdd" class="grow" title="Add or replace this bubble's picture (you can also paste or drop one)"><svg class="ic" aria-hidden="true"><use href="#i-image"/></svg> Picture…</button></div>
+            <div class="menu-row"><label class="grow">Size <select id="iSize" title="Picture size"><option value="S">Small</option><option value="M">Medium</option><option value="L">Large</option><option value="XL">X-Large</option></select></label>
+              <button id="iRemove" title="Remove picture">Remove</button></div>
+          </div>
+        </div>
+      </div>
     </div>
     <div class="group menu-wrap">
       <button id="bLink" title="Link the selected bubble to any other bubble (or drag the link handle on its corner)"><svg class="ic" aria-hidden="true"><use href="#i-link"/></svg> Link</button>
@@ -428,6 +460,10 @@
         </div>
       </div>
     </div>
+    <div class="group">
+      <button id="bDelete" class="icon" title="Delete the selected bubble and its branches, or the selected link (Delete)"><svg class="ic" aria-hidden="true"><use href="#i-trash"/></svg></button>
+      <button id="bCollapse" title="Fold this branch into one bubble, or unfold it (Ctrl+/)">Collapse</button>
+    </div>
   </div>
   <input type="file" id="file" accept=".spider,.json,application/json" hidden>
   <input type="file" id="vaultDir" webkitdirectory multiple hidden>
@@ -435,6 +471,7 @@
   <input type="file" id="imgfile" accept="image/*" hidden>
 </header>
 <!-- Notices that show wherever you are, homepage included: a new version, and the offer to install. -->
+<div id="toast"></div>
 <div id="notices">
   <div id="updateBar" class="notice" hidden><span id="updateText"></span><button id="updateGo" class="primary">Update now</button><button id="updateLater">Later</button></div>
   <div id="homeInstall" class="notice" hidden>
@@ -449,18 +486,28 @@
   <div class="home-bar">
     <h1><svg class="ic" aria-hidden="true"><use href="#i-logo"/></svg> Spider Diagrams</h1>
     <input id="homeSearch" type="search" placeholder="Search titles, bubbles and notes…   ( / )" autocomplete="off" spellcheck="false">
-    <select id="homeSort" title="Sort order"><option value="recent">Recently changed</option><option value="name">Name</option></select>
-    <button id="homeTour" title="A step-by-step tutorial that teaches you everything the app can do"><svg class="ic" aria-hidden="true"><use href="#i-help"/></svg> Tutorial</button>
-    <button id="homeExample" title="Open an example diagram that shows off the app's features"><svg class="ic" aria-hidden="true"><use href="#i-logo"/></svg> Example</button>
-    <button id="homeFolders" title="Choose which folders are searched for diagrams"><svg class="ic" aria-hidden="true"><use href="#i-folder"/></svg> Folders</button>
-    <button id="homeVault" title="Turn an Obsidian vault folder into a diagram (or drop a .zip of one onto the diagram)">Obsidian vault…</button>
-    <button id="homeOpen" title="Open a .spider file from anywhere (Ctrl+O)">Open file…</button>
+    <div class="menu-wrap">
+      <button id="homeOpenMenu" aria-haspopup="true" aria-expanded="false" title="Open a diagram, or an Obsidian vault">Open <svg class="ic chev" aria-hidden="true"><use href="#i-chevron"/></svg></button>
+      <div class="menu list" hidden>
+        <button id="homeOpen" title="Open a .spider file from anywhere"><svg class="ic" aria-hidden="true"><use href="#i-folder-open"/></svg> Open file…<span class="kb">Ctrl+O</span></button>
+        <button id="homeVault" title="Turn an Obsidian vault folder into a diagram (or drop a .zip of one here)"><svg class="ic" aria-hidden="true"><use href="#i-folder"/></svg> Obsidian vault…</button>
+      </div>
+    </div>
     <button id="homeNew" class="primary" title="Start a new diagram"><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg> New diagram</button>
+    <div class="menu-wrap">
+      <button id="homeMore" class="icon" aria-haspopup="true" aria-expanded="false" title="Tutorial, example, folders and updates"><svg class="ic" aria-hidden="true"><use href="#i-dots"/></svg></button>
+      <div class="menu list" hidden>
+        <button id="homeTour" title="A step-by-step tutorial that teaches you everything the app can do"><svg class="ic" aria-hidden="true"><use href="#i-help"/></svg> Tutorial</button>
+        <button id="homeExample" title="Open an example diagram that shows off the app's features"><svg class="ic" aria-hidden="true"><use href="#i-logo"/></svg> Example diagram</button>
+        <button id="homeFolders" title="Choose which folders are searched for diagrams"><svg class="ic" aria-hidden="true"><use href="#i-folder"/></svg> Library folders…</button>
+        <div class="menu-foot"><span id="versionNote"></span><button id="bCheckUpdate" hidden>Check for updates</button></div>
+      </div>
+    </div>
     <button id="homeTheme" class="icon" title="Switch between light and dark mode"><svg class="ic" aria-hidden="true"><use href="#i-moon"/></svg></button>
     <button id="homeClose" class="icon" title="Back to your diagram (Esc)"><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg></button>
   </div>
   <div id="homeFoldersPanel" class="home-folders" hidden></div>
-  <div id="homeStatus" class="home-status"></div>
+  <div class="home-tools"><div id="homeStatus" class="home-status"></div><select id="homeSort" title="Sort order"><option value="recent">Recently changed</option><option value="name">Name</option></select></div>
   <div id="homeGrid" class="home-grid"></div>
 </div>
 <div id="main">
@@ -485,7 +532,6 @@
     <span>In notes: [[Name]] links to a bubble, #tag tags it, and # / - / 1. / &gt; start headings, lists and quotes</span>
     <span>Double-click empty space to add a branch there (nothing selected: a free bubble) · scroll to zoom · drag background to pan</span>
   </div>
-  <div id="toast"></div>
   <div id="finder" hidden>
     <input id="finderInput" placeholder="Find a bubble: type a name, words from its notes, or #tag" autocomplete="off" spellcheck="false">
     <div id="finderList"></div>
@@ -2959,10 +3005,10 @@ function closeMenu() {
 // Menus hang from the right edge of their button; when the toolbar wraps (a narrow window), that can
 // push one off the left of the screen, so slide it back into view.
 function keepOnScreen(menu) {
-  menu.style.right = '';
+  menu.style.transform = '';
   const r = menu.getBoundingClientRect(), margin = 8;
-  if (r.left < margin) menu.style.right = `${r.left - margin}px`;
-  else if (r.right > innerWidth - margin) menu.style.right = `${r.right - innerWidth + margin}px`;
+  const shift = r.left < margin ? margin - r.left : r.right > innerWidth - margin ? innerWidth - margin - r.right : 0;
+  if (shift) menu.style.transform = `translateX(${shift}px)`;
 }
 addEventListener('resize', () => { for (const m of document.querySelectorAll('.menu:not([hidden])')) keepOnScreen(m); });
 function toggleMenu(btn) {   // the menu is the element right after its button
@@ -3087,6 +3133,10 @@ function syncToolbar() {
   $('#bUndo').disabled = !undoStack.length;
   $('#bRedo').disabled = !redoStack.length;
   for (const b of document.querySelectorAll('.swatch')) b.classList.toggle('on', !!s && b.dataset.c === s.color);
+  const lk = selLink != null && doc.links[selLink];
+  $('#colorDot').style.background = s ? THEMES[appTheme].c(s.color) : lk?.color ? THEMES[appTheme].c(lk.color) : '';
+  $('#bColorMenu').disabled = !s && !lk;
+  $('#bStyleMenu').disabled = $('#bPicMenu').disabled = !s;
   for (const id of ['#fBold', '#fItalic', '#fSmaller', '#fBigger', '#fShape', '#fFill', '#fReset', '#iAdd']) $(id).disabled = !s;
   $('#fBold').classList.toggle('on', !!L && L.fw >= 700);
   $('#fItalic').classList.toggle('on', !!L && L.italic);
@@ -3123,6 +3173,9 @@ on('#bFit', 'click', () => { seen('fit'); fit(); });
 on('#bUndo', 'click', undo);
 on('#bRedo', 'click', redo);
 on('#bExportMenu', 'click', e => toggleMenu(e.currentTarget));
+for (const id of ['#bFileMenu', '#bAddMenu', '#bStyleMenu', '#bColorMenu', '#bPicMenu', '#homeOpenMenu', '#homeMore']) on(id, 'click', e => toggleMenu(e.currentTarget));
+// Picking something from a short menu (File, Add, a colour, a picture action) closes it, like any app's menus.
+document.addEventListener('click', e => { if (e.target.closest('.menu.list > button, #swatches .swatch, #iAdd, #iRemove, #fReset')) closeMenu(); });
 on('#bLineMenu', 'click', e => { toggleMenu(e.currentTarget); syncLineMenu(); });
 on('#bLink', 'click', () => startLink());
 on('#lineBranch', 'click', lineToBranch);
@@ -4251,7 +4304,7 @@ async function runUpdate() {
 }
 on('#updateGo', 'click', runUpdate);
 on('#updateLater', 'click', () => { $('#updateBar').hidden = true; });
-on('#bCheckUpdate', 'click', () => { closeMenu(); checkUpdate(true); });
+on('#bCheckUpdate', 'click', () => { closeMenu(); checkUpdate(true); });   // (on the homepage's ⋯ menu)
 let installLater = false;   // "Not now": ask again next time the app starts
 function showInstallOffer() {
   let no = false; try { no = !!localStorage.getItem(INSTALL_STORE); } catch {}
@@ -4309,11 +4362,11 @@ const TUT_STEPS = [
       <p class="tip">Click a bubble to select it. <kbd>Shift+Enter</kbd> starts a new line inside a bubble; long text wraps by itself.</p>`,
     done: () => { const m = mains()[0]; return named(m) && m.text !== 'Main idea'; } },
   { title: 'Add a branch', target: '#bChild',
-    text: () => `<p>With the main idea selected, press <kbd>Tab</kbd> (or click ${ui('Branch')}) to add a branch coming off it.</p>
+    text: () => `<p>With the main idea selected, press <kbd>Tab</kbd> (or ${ui('Insert')} → <b>Branch</b>) to add a branch coming off it.</p>
       <p>Type its name and press <kbd>Enter</kbd>.</p>`,
     done: () => branches().length >= 1 },
   { title: 'Add more branches', target: '#bSibling',
-    text: () => `<p>With a branch selected, press <kbd>Enter</kbd> (or ${ui('Sibling')}) to add another one next to it.</p>
+    text: () => `<p>With a branch selected, press <kbd>Enter</kbd> (or ${ui('Insert')} → <b>Sibling</b>) to add another one next to it.</p>
       <p>Keep going until your main idea has <b>three branches</b>.</p>
       <p class="tip">New branches go round clockwise, each in the next colour of the rainbow.</p>`,
     done: () => branches().length >= 3 },
@@ -4345,19 +4398,19 @@ const TUT_STEPS = [
       <p class="tip">The Diagram menu also changes how wide bubbles get and whether lines are curved or straight.</p>`,
     done: t => t.seen.has('tidy') || t.seen.has('menu:diagramMenu') },
   { title: 'Colours', seed: true, target: '#swatches',
-    text: () => `<p>Select a branch and click a colour in the palette. The whole branch changes with it.</p>
+    text: () => `<p>Select a branch, open the colour menu (the coloured dot in the toolbar) and pick a colour. The whole branch changes with it.</p>
       <p class="tip">Give a bubble the dark main-idea colour (the first one) and its own branches start a new rainbow, which is handy for grouping. Colours fade to a soft pastel towards the ends of each branch; turn that off in the ${ui('Diagram')} menu. <b>Rainbow colours</b> in the same menu puts every branch back in rainbow order.</p>`,
     done: t => t.seen.has('color') },
   { title: 'Formatting', seed: true, target: '#fBold, #fItalic, #fSmaller, #fBigger, #fShape, #fFill', allow: '#fReset',
-    text: () => `<p>The third row of the toolbar formats the selected bubble:</p>
+    text: () => `<p>Like a word processor, the toolbar formats the selected bubble:</p>
       <ul><li>bold (<kbd>Ctrl+B</kbd>) and italic (<kbd>Ctrl+I</kbd>)</li>
       <li>${ui('A−')} ${ui('A+')} for smaller or bigger text</li>
-      <li>the <b>shape</b> (pill, box, ellipse, or just text) and the <b>fill</b></li></ul>
-      <p>Try one or two. ${ui('Reset')} puts a bubble back to normal.</p>`,
+      <li>${ui('Style')} for the <b>shape</b> (pill, box, ellipse, or just text) and the <b>fill</b></li></ul>
+      <p>Try one or two. ${ui('Style')} → <b>Reset formatting</b> puts a bubble back to normal.</p>`,
     done: () => all().some(n => n.bold != null || n.italic || n.size || n.shape || n.fill) },
   { title: 'Pictures', seed: true, optional: true, target: '#iAdd', allow: '#iSize, #iRemove',
-    text: () => `<p>Bubbles can hold a picture. Select one and click ${ui('Picture…')}, or <b>paste</b> (<kbd>Ctrl+V</kbd>) or <b>drag</b> an image straight onto it.</p>
-      <p>The size menu next to it makes the picture bigger or smaller.</p>
+    text: () => `<p>Bubbles can hold a picture. Select one, open the picture menu (the picture icon) and click <b>Picture…</b>, or <b>paste</b> (<kbd>Ctrl+V</kbd>) or <b>drag</b> an image straight onto it.</p>
+      <p>The same menu makes the picture bigger or smaller, or removes it.</p>
       <p class="tip">No picture to hand? Just skip this one.</p>`,
     done: () => all().some(n => n.img) },
   { title: 'Notes', seed: true, target: '#bNotes',
@@ -4390,12 +4443,12 @@ const TUT_STEPS = [
       <p class="tip"><kbd>${DEL_KEY}</kbd> deletes a selected link.</p>`,
     done: () => Object.values(doc.links).some(l => l.style || l.arrow || l.width || l.color || l.label) },
   { title: 'More than one main idea', target: '#bMain',
-    text: () => `<p>One file can hold several main ideas, for example every topic in a unit. Click ${ui('Main idea')}, type a name and press <kbd>Enter</kbd>.</p>
+    text: () => `<p>One file can hold several main ideas, for example every topic in a unit. Open ${ui('Insert')}, choose <b>Main idea</b>, type a name and press <kbd>Enter</kbd>.</p>
       <p class="tip">Give it a branch or two if you like. Links can join bubbles under different main ideas.</p>`,
     start: t => { t.mains = mains().length; },
     done: t => mains().filter(named).length > t.mains },
   { title: 'Free bubbles', target: '#bFree',
-    text: () => `<p>A <b>free bubble</b> floats on its own, handy for loose notes or ideas you'll sort out later. Click ${ui('Free')} and give it some text.</p>
+    text: () => `<p>A <b>free bubble</b> floats on its own, handy for loose notes or ideas you'll sort out later. Open ${ui('Insert')}, choose <b>Free bubble</b> and give it some text.</p>
       <p class="tip">Or click empty space to select nothing, then double-click there. Drop a free bubble onto another bubble to attach it.</p>`,
     done: () => all().some(n => isFree(n) && named(n)) },
   { title: 'Fold everything', target: '#bDiagramMenu',
@@ -4415,7 +4468,7 @@ const TUT_STEPS = [
       <p class="tip">Without a title, a diagram is named after its file, or its main ideas.</p>`,
     done: () => !!doc.title },
   { title: 'Saving', optional: true, target: '#bSave, #bHome', allow: '#bSaveAs',
-    text: () => `<p>${ui('Save')} (<kbd>Ctrl+S</kbd>) keeps your diagram as a <b>.spider</b> file, which you can open again later and keep editing.</p>
+    text: () => `<p>${ui('File')} → <b>Save</b> (<kbd>Ctrl+S</kbd>) keeps your diagram as a <b>.spider</b> file, which you can open again later and keep editing.</p>
       ${HOST ? `<p>The ${ui('home')} button at the top left shows all your diagrams, and you can search them by title, bubbles and notes.</p>` : `<p class="tip">Your work is also kept in this browser as you go, so a closed tab doesn't lose it, but saving a file is safer.</p>`}
       <p class="tip">You don't have to save this practice diagram, so you can skip this.</p>`,
     done: t => t.seen.has('save') },
@@ -4467,7 +4520,10 @@ function showTutStep(i) {
   next.title = next.disabled ? 'Do the step above to carry on' : '';
   next.classList.toggle('primary', !step.done);
   for (const el of document.querySelectorAll('.tut-glow')) el.classList.remove('tut-glow');
-  if (step.target && step.target !== '#world') for (const el of document.querySelectorAll(step.target)) el.classList.add('tut-glow');
+  if (step.target && step.target !== '#world') for (const el of document.querySelectorAll(step.target)) {
+    el.classList.add('tut-glow');
+    el.closest('.menu')?.previousElementSibling?.classList.add('tut-glow');   // tucked in a drop-down: light up its button
+  }
   tutLock(step);
 }
 function tutTick() {
@@ -4492,8 +4548,9 @@ const TUT_CONTROLS = 'header button, header select, header input, #docname, #swa
 function tutLock(step) {
   const ok = [step.target, step.allow, '#bUndo, #bRedo'].filter(t => t && t !== '#world').join(', ');
   for (const el of document.querySelectorAll(TUT_CONTROLS)) {
-    const menu = el.closest('.menu');   // the inside of a menu works whenever its button does
-    const allowed = step.last || el.closest(ok) || (menu && menu.previousElementSibling?.matches(ok));
+    const menu = el.closest('.menu');   // a menu's inside works whenever its button does, and its button whenever something inside is wanted
+    const opens = el.nextElementSibling?.classList.contains('menu') && el.nextElementSibling.querySelector(ok);
+    const allowed = step.last || el.closest(ok) || (menu && menu.previousElementSibling?.matches(ok)) || opens;
     el.classList.toggle('tut-off', !allowed);
   }
 }
