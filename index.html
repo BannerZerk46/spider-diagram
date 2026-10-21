@@ -172,12 +172,12 @@
   .notes-links button { border: 0; padding: 0; background: none; font-size: 13px; cursor: pointer; white-space: normal; text-align: left; }
   .notes-links .go { color: var(--accent); font-weight: 600; }
   .notes-links .go:hover { text-decoration: underline; }
-  .notes-links .dir { width: 24px; height: 22px; text-align: center; border: 1px solid var(--line); border-radius: 6px; color: var(--ink); }
+  .notes-links .dir { width: 14px; flex: none; text-align: center; color: var(--muted); }
   .notes-links .del { color: var(--muted); padding: 0 4px; font-size: 15px; }
   .notes-links .del:hover { color: var(--ink); }
   .notes-links input { font: inherit; font-size: 13px; color: var(--ink); background: transparent; border: 1px solid transparent; border-radius: 6px; padding: 2px 6px; min-width: 0; }
   .notes-links input:hover, .notes-links input:focus { border-color: var(--line); background: var(--editor); outline: none; }
-  .notes-links .lbl { width: 9em; font-weight: 600; }
+  .notes-links .lbl { flex: none; max-width: 70%; font-weight: 600; }
   .notes-links .add input { flex: 1; border-color: var(--line); }
   #notesBody { flex: 1; overflow: auto; padding: 14px 18px; outline: none; font-size: 15px; line-height: 1.55; overflow-wrap: anywhere; }
   #notesBody[contenteditable="false"] { color: var(--muted); }
@@ -3812,10 +3812,9 @@ function followWiki(name) {
   sel = t.id; selLink = null;
   render(); revealNode(t.id);
 }
-// The notes panel's Links list: every link this bubble has (in its arrow's direction), each with its
-// label to type into, a button for the arrow, the bubble at the other end, and ×. "Add a link…" at the
-// bottom links this bubble to another by name. It isn't rebuilt while you're typing in it.
-const ARROW_OUT = { none: 'end', end: 'both', both: 'none' };   // —, →, ↔ as seen from this bubble
+// The notes panel's Links list: every link this bubble has (in its arrow's direction), each showing
+// which way it goes, its label to type into (sized to fit), the bubble at the other end, and ×.
+// "Add a link…" at the bottom links this bubble to another by name. Not rebuilt while you're typing in it.
 function showNoteLinks(n, force) {
   const box = $('#notesLinks');
   if (!force && box.contains(document.activeElement)) return;
@@ -3823,9 +3822,9 @@ function showNoteLinks(n, force) {
   const rows = Object.values(doc.links).flatMap(l => linkSides(l).filter(([own]) => own === n.id).map(([, o, dir]) => [l, o, dir])).map(([l, o, dir]) => {
     const other = N(o), arrow = l.arrow || 'none', mine = l.from === n.id;
     // Seen from this bubble: an arrow pointing at the other bubble shows as →, both ways as ↔, none as —.
-    const sym = arrow === 'both' ? '↔' : arrow === 'none' ? (dir === 'out' ? '—' : '—') : '→';
+    const sym = arrow === 'both' ? '↔' : arrow === 'none' ? '—' : '→';
     const hint = l.note ? (mine ? 'from [[' + bubbleName(other) + ']] in these notes' : 'from [[' + bubbleName(N(n.id)) + ']] in its notes') : '';
-    return `<div class="nl"><button class="dir" data-arrow="${l.id}" title="Arrow: none, pointing to the other bubble, or both ways">${sym}</button>`
+    return `<div class="nl"><span class="dir" title="${arrow === 'both' ? 'Arrows both ways' : arrow === 'none' ? 'No arrow' : 'Points to the other bubble'}">${sym}</span>`
       + `<input class="lbl" data-label="${l.id}" value="${esc(l.label || '')}" placeholder="${l.note ? 'mentions' : 'label'}" title="${esc(hint || 'What this link means')}">`
       + `<button class="go" data-go="${other.id}">[[${esc(bubbleName(other) || 'untitled')}]]</button>`
       + `<button class="del" data-del="${l.id}" title="Delete this link">×</button></div>`;
@@ -3833,24 +3832,22 @@ function showNoteLinks(n, force) {
   box.dataset.for = n.id;
   box.innerHTML = `<div class="nl-title">Links</div>${rows.join('')}`
     + `<div class="nl add"><input id="nlAdd" list="nlNames" placeholder="Add a link: type a bubble's name, then Enter"><datalist id="nlNames"></datalist></div>`;
+  for (const i of box.querySelectorAll('.lbl')) fitLabel(i);
+}
+// Size a label box to its text (or its placeholder when empty).
+function fitLabel(input) {
+  mctx.font = `600 13px ${FONT}`;
+  input.style.width = Math.ceil(mctx.measureText(input.value || input.placeholder).width + 18) + 'px';
 }
 function linkFromPanel(l) {   // the link a Links-list control belongs to, with the bubble the panel is showing
   return { l: doc.links[l], here: +$('#notesLinks').dataset.for };
 }
 $('#notesLinks').addEventListener('click', e => {
-  const go = e.target.closest('[data-go]'), del = e.target.closest('[data-del]'), arrow = e.target.closest('[data-arrow]');
+  const go = e.target.closest('[data-go]'), del = e.target.closest('[data-del]');
   if (go) { flushNotes(); sel = +go.dataset.go; selLink = null; render(); revealNode(sel); }
   else if (del) { const { l } = linkFromPanel(+del.dataset.del); if (l) { selLink = l.id; sel = l.from; removeSelected(); sel = +$('#notesLinks').dataset.for; render(); showNoteLinks(N(sel), true); } }
-  else if (arrow) {
-    const { l, here } = linkFromPanel(+arrow.dataset.arrow);
-    if (!l) return;
-    commit();
-    const now = l.arrow || 'none', seen = l.from === here ? now : { end: 'start', start: 'end' }[now] || now;   // as seen from this bubble
-    const next = ARROW_OUT[seen] || 'end', set = l.from === here ? next : { end: 'start', start: 'end' }[next] || next;
-    if (set === 'none') delete l.arrow; else l.arrow = set;
-    render(); showNoteLinks(N(here), true);
-  }
 });
+$('#notesLinks').addEventListener('input', e => { if (e.target.classList.contains('lbl')) fitLabel(e.target); });
 $('#notesLinks').addEventListener('focusin', e => {
   if (e.target.id === 'nlAdd') $('#nlNames').innerHTML = all().map(bubbleName).filter(Boolean).sort().map(t => `<option value="${esc(t)}">`).join('');
 });
