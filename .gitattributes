@@ -1,0 +1,2 @@
+# Built by build.py from index.html and spider-diagram.py: collapse them in diffs
+dist/** linguist-generated=true -diff
