@@ -1,8 +1,8 @@
 {
- "version": "2026.10.21.1153",
+ "version": "2026.10.21.1206",
  "sha256": {
-  "spider-diagram-linux": "5fe89d42ab649ec8d4b9170bec622cd80067222229bf1399ba5256b1ea90a390",
-  "spider-diagram-windows.cmd": "c3dd2b05b83c257fcb49df4b3d806f078a300581e29d910ef42dca81fa4fcf9c",
-  "spider-diagram-chromeos.html": "0ece2c0a248474f58b2c454bbcd3051736ff02d02b7b1a6b629e200792fa1801"
+  "spider-diagram-linux": "e2f5a67382dfc902474b6e3ed03553c3d6d42a208af5eb1a28bc0598edb5dbae",
+  "spider-diagram-windows.cmd": "4d152443ad1f5adcf9ef799c613fafcde250e1a635fe09b6615ece0e17c55cb4",
+  "spider-diagram-chromeos.html": "7c83e9e30fbfce457a80e53bd6bf5310daab248576740b81aa4afa83e77f9fd3"
  }
 }
