@@ -1372,8 +1372,9 @@ function scene(ui, theme = appTheme) {
   for (const n of ns) {
     if (isRoot(n)) continue;
     const d = geom[n.id].d;
-    edges += drawLine(N(n.parent), n, { ...LINE_DEFAULTS.tree, ...n.line }, paint(n), d === 1 ? 6 : d === 2 ? 3.5 : 2,
-      { ui, hit: `data-edge="${n.id}"` });
+    const fadeLine = focusTag && !tagsOf(n).includes(focusTag) && !tagsOf(N(n.parent)).includes(focusTag);   // highlighting a tag
+    edges += (fadeLine ? '<g opacity=".18">' : '') + drawLine(N(n.parent), n, { ...LINE_DEFAULTS.tree, ...n.line }, paint(n), d === 1 ? 6 : d === 2 ? 3.5 : 2,
+      { ui, hit: `data-edge="${n.id}"` }) + (fadeLine ? '</g>' : '');
   }
   const taken = [];
   linkCurves = []; linkLabels = {};
