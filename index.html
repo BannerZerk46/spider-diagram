@@ -150,6 +150,15 @@
   .notes-tools { display: flex; flex-wrap: wrap; gap: 4px; padding: 8px 12px; border-bottom: 1px solid var(--line); background: var(--row2); }
   .notes-tools button { padding: 4px 8px; min-width: 30px; }
   .notes-tools select { padding: 4px 6px; }
+  #notesBody .wl { color: var(--accent); font-weight: 600; border-radius: 4px; }
+  #notesBody .wl.missing { color: var(--muted); text-decoration: underline dashed; }
+  .notes-links { border-top: 1px solid var(--line); padding: 8px 18px 10px; font-size: 13px; display: flex; flex-direction: column; gap: 4px; max-height: 32%; overflow: auto; }
+  .notes-links:empty { display: none; }
+  .notes-links .nl-title { color: var(--muted); font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+  .notes-links .nl { display: flex; align-items: baseline; gap: 6px; color: var(--muted); }
+  .notes-links .nl b { color: var(--ink); font-weight: 600; }
+  .notes-links button { border: 0; padding: 0; background: none; color: var(--accent); font-weight: 600; font-size: 13px; cursor: pointer; white-space: normal; text-align: left; }
+  .notes-links button:hover { text-decoration: underline; }
   #notesBody { flex: 1; overflow: auto; padding: 14px 18px; outline: none; font-size: 15px; line-height: 1.55; overflow-wrap: anywhere; }
   #notesBody[contenteditable="false"] { color: var(--muted); }
   #notesBody:empty::before { content: attr(data-placeholder); color: var(--muted); pointer-events: none; }
@@ -314,7 +323,7 @@
           <p class="menu-note">Every idea as indented bullet points — sections become headings. Includes collapsed branches.</p>
           <div class="menu-row">
             <select id="outlineFmt" class="grow" title="Word documents open in Word, Google Docs and LibreOffice">
-              <option value="docx">Word / Google Docs (.docx)</option><option value="md">Markdown (.md)</option><option value="txt">Plain text (.txt)</option>
+              <option value="docx">Word / Google Docs (.docx)</option><option value="md">Markdown (.md)</option><option value="txt">Plain text (.txt)</option><option value="obsidian">Obsidian vault (.zip)</option>
             </select>
           </div>
           <div class="menu-row">
@@ -323,6 +332,7 @@
           </div>
           <label class="check" id="docxPicRow"><input type="checkbox" id="docxPic" checked> Include a picture of the diagram</label>
           <p class="menu-note" id="docxNote">Copy pastes formatted headings and bullets into Google Docs or Word.</p>
+          <p class="menu-note" id="vaultNote" hidden>A folder of notes, one per bubble, with branches and links as [[links]]: unzip it and open the folder in Obsidian, and its graph view shows your diagram. It opens back up here too, with Obsidian vault… on the homepage.</p>
         </div>
       </div>
     </div>
@@ -400,6 +410,7 @@
     </div>
   </div>
   <input type="file" id="file" accept=".spider,.json,application/json" hidden>
+  <input type="file" id="vaultDir" webkitdirectory multiple hidden>
 
   <input type="file" id="imgfile" accept="image/*" hidden>
 </header>
@@ -411,6 +422,7 @@
     <button id="homeTour" title="A step-by-step tutorial that teaches you everything the app can do"><svg class="ic" aria-hidden="true"><use href="#i-help"/></svg> Tutorial</button>
     <button id="homeExample" title="Open an example diagram that shows off the app's features"><svg class="ic" aria-hidden="true"><use href="#i-logo"/></svg> Example</button>
     <button id="homeFolders" title="Choose which folders are searched for diagrams"><svg class="ic" aria-hidden="true"><use href="#i-folder"/></svg> Folders</button>
+    <button id="homeVault" title="Turn an Obsidian vault folder into a diagram (or drop a .zip of one onto the diagram)">Obsidian vault…</button>
     <button id="homeOpen" title="Open a .spider file from anywhere (Ctrl+O)">Open file…</button>
     <button id="homeNew" class="primary" title="Start a new diagram"><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg> New diagram</button>
     <button id="homeTheme" class="icon" title="Switch between light and dark mode"><svg class="ic" aria-hidden="true"><use href="#i-moon"/></svg></button>
@@ -478,7 +490,8 @@
     <button data-cmd="removeFormat" title="Clear formatting"><svg class="ic" aria-hidden="true"><use href="#i-clear-format"/></svg></button>
   </div>
   <div id="notesBody" contenteditable="true" spellcheck="true" data-placeholder="Notes for this bubble — write as much as you like. Paste or drop pictures, add tables and links."></div>
-  <div class="notes-foot">Ctrl+click a link to open it · Esc goes back to the diagram</div>
+  <div id="notesLinks" class="notes-links"></div>
+  <div class="notes-foot">Type [[Name]] to link to another bubble · Ctrl+click a link to follow it · Esc goes back to the diagram</div>
   <input type="file" id="notesImg" accept="image/*" multiple hidden>
 </aside>
 </div>
@@ -966,7 +979,7 @@ function normalize(d) {
     const id = Number(key);
     if (!Number.isInteger(id) || !l || !nodes[l.from] || !nodes[l.to] || l.from === l.to) continue;
     const label = typeof l.label === 'string' ? l.label.replace(/\s+/g, ' ').trim().slice(0, 120) : '';
-    links[id] = { id, from: l.from, to: l.to, ...cleanLine(l), ...(hex(l.color) ? { color: l.color } : {}), ...(label ? { label } : {}) };
+    links[id] = { id, from: l.from, to: l.to, ...cleanLine(l), ...(hex(l.color) ? { color: l.color } : {}), ...(label ? { label } : {}), ...(l.note === true ? { note: true } : {}) };
   }
   const maxId = Math.max(...Object.keys(nodes).map(Number), ...Object.keys(links).map(Number));
   const title = typeof d?.title === 'string' ? d.title.replace(/\s+/g, ' ').trim().slice(0, 200) : '';
@@ -1601,7 +1614,11 @@ function addFree(at) {
 }
 function removeSelected() {
   seen('delete');
-  if (selLink != null) { commit(); delete doc.links[selLink]; selLink = null; render(); return; }
+  if (selLink != null) {
+    const l = doc.links[selLink];
+    if (l?.note) toast(`This link comes from [[${bubbleName(N(l.to))}]] in the notes of "${bubbleName(N(l.from))}", so it comes back unless you remove that`);
+    commit(); delete doc.links[selLink]; selLink = null; render(); return;
+  }
   const s = sel != null && N(sel);
   if (!s) return;
   if (isMain(s) && mains().length === 1) return toast('A diagram needs at least one main idea');
@@ -1804,7 +1821,7 @@ function relaxFree() {
     return crossings * 4000 + length + off.reduce((m, o) => m + Math.hypot(o.x, o.y), 0) * 0.5;   // and don't move things for nothing
   };
   let best = null, bestCost = Infinity;
-  for (let trial = 0; trial < 10; trial++) {
+  for (let trial = 0, trials = units.length > 60 ? 1 : units.length > 25 ? 4 : 10; trial < trials; trial++) {
     const start = units.map((u, i) => {
       if (!trial || !u.free) return { x: 0, y: 0 };
       const ang = (i * 2.399 + trial * 1.7) % (2 * Math.PI), r = 250 + 90 * (trial % 4);
@@ -1957,7 +1974,7 @@ function finishEdit(cancel = false) {
   } else {
     n.text = text.trim() ? text : '';
     changed = e.isNew || n.text !== e.orig;
-    if (!e.isNew && n.text !== e.orig) { undoStack.push(e.snap); redoStack = []; markDirty(); }
+    if (!e.isNew && n.text !== e.orig) { undoStack.push(e.snap); redoStack = []; markDirty(); renameWikiRefs(e.orig, n.text); }
   }
   render();
   if (changed) autoTidy();
@@ -2149,7 +2166,8 @@ stage.addEventListener('drop', e => {
   if (f.type.startsWith('image/')) {
     const p = toWorld(e), hit = nodeAt(p);
     hit ? setImage(hit.id, f) : newImageNode(cur(), p, f);
-  } else openFile(f);
+  } else if (/\.zip$/i.test(f.name)) unzip(f).then(importVault).catch(err => toast("Couldn't read that vault: " + err.message));
+  else openFile(f);
 });
 document.addEventListener('paste', e => {
   if (editing) return;
@@ -2452,7 +2470,10 @@ function notesToMarkdown(html, { plain = false, headings = '###' } = {}) {
   const inline = nodes => {
     let out = '';
     for (const c of nodes) {
-      if (c.nodeType === Node.TEXT_NODE) { out += escMd(c.nodeValue.replace(/\s+/g, ' ')); continue; }
+      if (c.nodeType === Node.TEXT_NODE) {   // [[links]] stay as they are, so Obsidian still sees them
+        out += c.nodeValue.replace(/\s+/g, ' ').split(/(\[\[[^\[\]\n]+\]\])/).map((t, i) => i % 2 ? t : escMd(t)).join('');
+        continue;
+      }
       if (c.nodeType !== Node.ELEMENT_NODE) continue;
       const t = c.tagName, inner = () => inline(c.childNodes);
       if (t === 'B' || t === 'STRONG') out += wrap('**', inner());
@@ -2837,6 +2858,7 @@ async function docxBlob(withPicture) {
 async function exportOutline() {
   if (editing) finishEdit();
   const fmt = $('#outlineFmt').value;
+  if (fmt === 'obsidian') return saveExport(vaultZip(), slug() + ' (Obsidian vault).zip', 'zip');
   const blob = fmt === 'docx' ? await docxBlob($('#docxPic').checked)
     : new Blob([outline(fmt)], { type: fmt === 'md' ? 'text/markdown' : 'text/plain' });
   saveExport(blob, slug() + '.' + fmt, fmt);
@@ -2859,8 +2881,10 @@ async function copyOutline() {
   } catch { toast('Clipboard not available here — use Save outline'); }
 }
 function syncOutlineOptions() {
-  const docx = $('#outlineFmt').value === 'docx';
+  const fmt = $('#outlineFmt').value, docx = fmt === 'docx';
   $('#docxPicRow').hidden = $('#docxNote').hidden = !docx;
+  $('#vaultNote').hidden = fmt !== 'obsidian';
+  $('#bCopyOutline').hidden = fmt === 'obsidian';
 }
 function closeMenu() {
   for (const m of document.querySelectorAll('.menu')) m.hidden = true;
@@ -3146,6 +3170,7 @@ function syncNotesPanel() {
   if (notesFor == null || !N(notesFor) || (sel != null && sel !== notesFor)) showNotesFor(sel);
   const n = notesFor != null && N(notesFor);
   $('#notesTitle').textContent = n ? (plainText(n) || 'Untitled bubble') : 'Select a bubble to see its notes';
+  showNoteLinks(n);
 }
 function showNotesFor(id) {
   flushNotes();
@@ -3154,6 +3179,7 @@ function showNotesFor(id) {
   notesEl.innerHTML = n ? sanitizeNotes(n.notes) : '';
   notesEl.contentEditable = n ? 'true' : 'false';
   notesCommitted = false;
+  markWikiLinks();
 }
 function notesChanged() { clearTimeout(notesTimer); notesTimer = setTimeout(flushNotes, 400); }
 // Write the panel's content into the bubble. The first change of each visit is one undo step.
@@ -3165,6 +3191,7 @@ function flushNotes() {
   if ((n.notes || undefined) === next) return;
   if (!notesCommitted) { commit(); notesCommitted = true; } else markDirty();
   if (next) n.notes = next; else delete n.notes;
+  syncNoteLinks(n);
   render();
 }
 // The diagram is being replaced (undo, open, new): forget unsaved typing instead of writing it into the new one.
@@ -3243,7 +3270,7 @@ function tableAction(action) {
 
 notesEl.addEventListener('input', notesChanged);
 notesEl.addEventListener('focusin', () => { notesCommitted = false; });
-notesEl.addEventListener('blur', flushNotes);
+notesEl.addEventListener('blur', () => { flushNotes(); markWikiLinks(); });
 notesEl.addEventListener('keydown', e => {
   const mod = e.ctrlKey || e.metaKey, k = e.key.toLowerCase();
   if (e.key === 'Escape') { e.preventDefault(); flushNotes(); notesEl.blur(); }
@@ -3253,6 +3280,8 @@ notesEl.addEventListener('keydown', e => {
   else if (e.key === 'Tab' && caretBlock()?.closest('li')) { e.preventDefault(); noteCmd(e.shiftKey ? 'outdent' : 'indent'); }
 });
 notesEl.addEventListener('click', e => {
+  const wl = e.target.closest('.wl');
+  if (wl && (e.ctrlKey || e.metaKey)) { e.preventDefault(); return followWiki(wl.dataset.wiki); }
   const a = e.target.closest('a');
   if (a && (e.ctrlKey || e.metaKey)) { e.preventDefault(); window.open(a.href, '_blank', 'noopener,noreferrer'); }
 });
@@ -3495,6 +3524,340 @@ function applyMacLabels() {
   for (const k of document.querySelectorAll('#hints kbd')) if (k.textContent === 'Del') k.textContent = '⌫';   // the Mac delete key
   for (const sp of document.querySelectorAll('#hints span')) sp.innerHTML = sp.innerHTML.replace('scroll to zoom · drag background to pan', 'pinch to zoom · scroll or drag the background to pan');
 }
+
+/* ---------- [[links]] in notes ----------
+   Like Obsidian: writing [[Name]] in a bubble's notes links it to the bubble called Name (also
+   [[Name|shown text]] and [[Name#section]]). Those links appear on the diagram too, marked note: true,
+   and follow the notes: delete the [[Name]] and its link goes. Links drawn on the diagram show up in
+   the notes panel's Links list, so either way round, both places agree. */
+const WIKI = /\[\[([^\[\]\n|#]+)(?:[#|][^\[\]\n]*)?\]\]/g;
+const bubbleName = n => (n?.text || '').replace(/\s*\n\s*/g, ' ').trim();
+function findBubble(name) {
+  const key = name.trim().toLowerCase();
+  return all().sort((a, b) => a.id - b.id).find(n => bubbleName(n).toLowerCase() === key) || null;
+}
+const wikiNames = html => [...new DOMParser().parseFromString(`<body>${html || ''}</body>`, 'text/html').body.textContent.matchAll(WIKI)].map(m => m[1].trim());
+// Make the diagram's links from n match the [[links]] in its notes.
+function syncNoteLinks(n) {
+  const want = new Set(wikiNames(n.notes).map(findBubble).filter(t => t && t.id !== n.id).map(t => t.id));
+  const from = Object.values(doc.links).filter(l => l.from === n.id);
+  for (const l of from) if (l.note && !want.has(l.to)) delete doc.links[l.id];
+  for (const to of want) if (!from.some(l => l.to === to && doc.links[l.id])) {
+    const id = doc.nextId++;
+    doc.links[id] = { id, from: n.id, to, note: true };
+  }
+}
+// Renaming a bubble updates [[Old name]] wherever it's written, so links don't break.
+function renameWikiRefs(oldText, newText) {
+  const from = esc(oldText.replace(/\s*\n\s*/g, ' ').trim()), to = esc(newText.replace(/\s*\n\s*/g, ' ').trim());
+  if (!from || !to || from === to) return;
+  const re = new RegExp('\\[\\[\\s*' + from.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*(?=[\\]|#])', 'gi');
+  for (const n of all()) if (n.notes && re.test(n.notes)) { re.lastIndex = 0; n.notes = n.notes.replace(re, '[[' + to); }
+}
+// Show [[links]] in the open notes as links (display only: they're saved as plain text).
+function markWikiLinks() {
+  const walker = document.createTreeWalker(notesEl, NodeFilter.SHOW_TEXT), texts = [];
+  const has = new RegExp(WIKI.source);
+  for (let t; (t = walker.nextNode());) if (!t.parentNode.closest('.wl') && has.test(t.nodeValue)) texts.push(t);
+  for (const t of texts) {
+    const frag = document.createDocumentFragment();
+    let last = 0;
+    for (const m of t.nodeValue.matchAll(WIKI)) {
+      frag.append(t.nodeValue.slice(last, m.index));
+      const span = document.createElement('span');
+      span.className = 'wl' + (findBubble(m[1]) ? '' : ' missing');
+      span.dataset.wiki = m[1].trim();
+      span.title = findBubble(m[1]) ? 'Ctrl+click to go to this bubble' : 'No bubble has this name yet: Ctrl+click to make one';
+      span.textContent = m[0];
+      frag.append(span);
+      last = m.index + m[0].length;
+    }
+    frag.append(t.nodeValue.slice(last));
+    t.replaceWith(frag);
+  }
+}
+// Go to the bubble a [[link]] names, making it (as a free bubble beside this one) if there isn't one.
+function followWiki(name) {
+  flushNotes();
+  let t = findBubble(name);
+  if (!t) {
+    const here = N(notesFor ?? cur());
+    commit();
+    const id = doc.nextId++;
+    doc.nodes[id] = { id, text: name, x: here.x + 260, y: here.y + 120, parent: null, kind: 'free', color: ROOT_FILL, shape: 'text' };
+    for (const n of all()) if (n.notes && wikiNames(n.notes).some(w => w.toLowerCase() === name.toLowerCase())) syncNoteLinks(n);
+    t = N(id);
+    toast(`Made a new bubble "${name}"`);
+  }
+  sel = t.id; selLink = null;
+  render(); revealNode(t.id);
+}
+// The notes panel's Links list: every link to or from this bubble, with its label and direction.
+function showNoteLinks(n) {
+  const box = $('#notesLinks');
+  if (!n) { box.innerHTML = ''; return; }
+  const rows = Object.values(doc.links).filter(l => l.from === n.id || l.to === n.id).map(l => {
+    const out = l.from === n.id, other = N(out ? l.to : l.from);
+    const what = l.label ? `<b>${esc(l.label)}</b>` : l.note ? (out ? 'mentions' : 'mentioned in') : out ? 'links to' : 'linked from';
+    return `<div class="nl"><span>${out ? '→' : '←'}</span><span>${what}</span><button data-go="${other.id}">[[${esc(bubbleName(other) || 'untitled')}]]</button></div>`;
+  });
+  box.innerHTML = rows.length ? `<div class="nl-title">Links</div>${rows.join('')}` : '';
+}
+$('#notesLinks').addEventListener('click', e => {
+  const b = e.target.closest('[data-go]');
+  if (b) { flushNotes(); sel = +b.dataset.go; selLink = null; render(); revealNode(sel); }
+});
+
+/* ---------- Obsidian vaults: export and import ----------
+   Export: one note per bubble. A bubble's notes become the note's text, its branches a "Branches"
+   list of [[links]], its links a "Links" list ("label:: [[Other]]", like Obsidian's inline fields), and
+   pictures go in attachments/. Each note also keeps a "spider" property (position, colour, look), so a
+   vault made here opens back up looking the same. Import: any vault works, a folder or a .zip; notes
+   without that property become free bubbles, joined wherever they [[link]] to each other. */
+const b64bytes = b64 => Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+const yamlStr = v => `'${String(v).replace(/'/g, "''")}'`;
+function vaultZip() {
+  flushNotes();
+  const folder = safeName(docTitle()) || 'Spider diagram', fileOf = {}, used = new Set(), files = [], usedAtt = new Set();
+  for (const n of all().sort((a, b) => a.id - b.id)) {
+    const base = safeName(bubbleName(n)) || (n.img ? 'Picture' : 'Untitled');
+    let name = base, k = 2;
+    while (used.has(name.toLowerCase())) name = `${base} ${k++}`;
+    used.add(name.toLowerCase()); fileOf[n.id] = name;
+  }
+  const attach = (src, base) => {
+    const m = src.match(/^data:image\/(png|jpeg|gif|webp);base64,([a-z0-9+/=\s]+)$/i);
+    if (!m) return null;
+    const ext = m[1].toLowerCase() === 'jpeg' ? 'jpg' : m[1].toLowerCase();
+    let name = `${base}.${ext}`, k = 2;
+    while (usedAtt.has(name)) name = `${base} ${k++}.${ext}`;
+    usedAtt.add(name);
+    files.push({ name: `${folder}/attachments/${name}`, data: b64bytes(m[2].replace(/\s/g, '')) });
+    return `attachments/${name}`;
+  };
+  for (const n of all()) {
+    const name = fileOf[n.id], meta = { id: n.id, x: Math.round(n.x), y: Math.round(n.y), color: n.color };
+    for (const k of ['kind', 'order', 'shape', 'fill', 'bold', 'italic', 'size', 'imgSize', 'line', 'collapsed']) if (n[k] != null) meta[k] = n[k];
+    if (n.text && n.text !== name) meta.text = n.text;
+    const body = [];
+    if (n.img) { const at = attach(n.img.src, name); if (at) { meta.img = at; body.push(`![[${at}]]`, ''); } }
+    if (n.notes) {
+      let k = 1;
+      body.push(notesToMarkdown(n.notes).replace(/!\[\]\((data:image\/[a-z]+;base64,[a-z0-9+/=]+)\)/gi, (all, src) => {
+        const at = attach(src, `${name} ${k++}`);
+        return at ? `![[${at}]]` : '';
+      }), '');
+    }
+    const kids = ordered(n.id);
+    if (kids.length) body.push('## Branches', ...kids.map(c => `- [[${fileOf[c.id]}]]`), '');
+    const out = Object.values(doc.links).filter(l => l.from === n.id && !l.note);
+    if (out.length) body.push('## Links', ...out.map(l => `- ${l.label ? l.label.replace(/::/g, ':') + ':: ' : ''}[[${fileOf[l.to]}]]`), '');
+    const looks = Object.values(doc.links).filter(l => l.from === n.id).map(l => ({ to: l.to, ...cleanLine(l), ...(l.color ? { color: l.color } : {}), ...(l.note ? { note: true } : {}) }))
+      .filter(l => Object.keys(l).length > 1);
+    if (looks.length) meta.links = looks;
+    const props = ['---', ...(n.parent !== null ? [`branch of: "[[${fileOf[n.parent]}]]"`] : []), `spider: ${yamlStr(JSON.stringify(meta))}`, '---', ''];
+    files.push({ name: `${folder}/${name}.md`, data: props.join('\n') + body.join('\n').replace(/\n{3,}/g, '\n\n').trim() + '\n' });
+  }
+  return zipBlob(files, 'application/zip');
+}
+function safeName(t) { return (t || '').replace(/[\\/:*?"<>|#^[\]]/g, '-').replace(/\s+/g, ' ').trim().slice(0, 80); }
+
+// Read a .zip (stored or deflated entries) into [{ path, blob }].
+async function unzip(file) {
+  const buf = new Uint8Array(await file.arrayBuffer()), v = new DataView(buf.buffer), out = [];
+  let end = buf.length - 22;
+  while (end >= 0 && v.getUint32(end, true) !== 0x06054b50) end--;
+  if (end < 0) throw new Error("That isn't a zip file");
+  let p = v.getUint32(end + 16, true);
+  for (let i = 0, count = v.getUint16(end + 10, true); i < count; i++) {
+    const method = v.getUint16(p + 10, true), size = v.getUint32(p + 20, true), nameLen = v.getUint16(p + 28, true);
+    const extra = v.getUint16(p + 30, true), comment = v.getUint16(p + 32, true), local = v.getUint32(p + 42, true);
+    const path = new TextDecoder().decode(buf.subarray(p + 46, p + 46 + nameLen));
+    const start = local + 30 + v.getUint16(local + 26, true) + v.getUint16(local + 28, true), raw = buf.subarray(start, start + size);
+    if (!path.endsWith('/')) {
+      if (method === 0) out.push({ path, blob: new Blob([raw]) });
+      else if (method === 8) out.push({ path, blob: await new Response(new Blob([raw]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).blob() });
+    }
+    p += 46 + nameLen + extra + comment;
+  }
+  return out;
+}
+
+// A small Markdown reader for notes: headings, lists, quotes, tables, code, rules, bold/italic/strike,
+// links and pictures. [[links]] stay as text (they become links on the diagram).
+function markdownToHtml(md) {
+  const inline = t => {
+    const codes = [];
+    t = t.replace(/`([^`]+)`/g, (m, c) => `\u0000${codes.push(c) - 1}\u0000`);
+    t = esc(t)
+      .replace(/!\[\[([^\]|]+)(?:\|[^\]]*)?\]\]/g, (m, f) => /\.(png|jpe?g|gif|webp)$/i.test(f) ? `<img data-embed="${f.trim()}">` : `[[${f}]]`)
+      .replace(/!\[[^\]]*\]\(([^)\s]+)[^)]*\)/g, (m, u) => `<img data-embed="${u}">`)
+      .replace(/(?<!!)\[([^\]]+)\]\((https?:[^)\s]+|mailto:[^)\s]+)\)/g, '<a href="$2">$1</a>')
+      .replace(/\*\*([^*]+)\*\*|__([^_]+)__/g, (m, a, b) => `<b>${a || b}</b>`)
+      .replace(/(^|[^*\w])\*([^*\n]+)\*(?!\*)|(^|\W)_([^_\n]+)_(?!\w)/g, (m, p1, a, p2, b) => `${p1 ?? p2}<i>${a ?? b}</i>`)
+      .replace(/~~([^~]+)~~/g, '<s>$1</s>').replace(/==([^=]+)==/g, '<mark>$1</mark>');
+    return t.replace(/\u0000(\d+)\u0000/g, (m, i) => `<code>${esc(codes[i])}</code>`);
+  };
+  const lines = md.replace(/\r\n?/g, '\n').split('\n'), out = [];
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    if (!line.trim()) { i++; continue; }
+    if (/^```/.test(line)) {
+      const code = []; i++;
+      while (i < lines.length && !/^```/.test(lines[i])) code.push(lines[i++]);
+      i++; out.push(`<pre>${esc(code.join('\n'))}</pre>`); continue;
+    }
+    let m;
+    if ((m = line.match(/^(#{1,6})\s+(.*)$/))) { out.push(m[1].length <= 2 ? `<h2>${inline(m[2])}</h2>` : `<h3>${inline(m[2])}</h3>`); i++; continue; }
+    if (/^(\s*[-*_]){3,}\s*$/.test(line)) { out.push('<hr>'); i++; continue; }
+    if (/^>/.test(line)) {
+      const q = [];
+      while (i < lines.length && /^>/.test(lines[i])) q.push(lines[i++].replace(/^>\s?/, '').replace(/^\[!\w+\][+-]?\s*/, ''));
+      out.push(`<blockquote>${markdownToHtml(q.join('\n'))}</blockquote>`); continue;
+    }
+    if (/^\s*\|.*\|\s*$/.test(line) && /^\s*\|?\s*:?-{3,}/.test(lines[i + 1] || '')) {
+      const cells = l => l.trim().replace(/^\||\|$/g, '').split(/(?<!\\)\|/).map(c => inline(c.trim()));
+      const head = cells(line); i += 2;
+      const rows = [];
+      while (i < lines.length && /^\s*\|.*\|\s*$/.test(lines[i])) rows.push(cells(lines[i++]));
+      out.push(`<table><thead><tr>${head.map(c => `<th>${c}</th>`).join('')}</tr></thead><tbody>${rows.map(r => `<tr>${r.map(c => `<td>${c}</td>`).join('')}</tr>`).join('')}</tbody></table>`);
+      continue;
+    }
+    if (/^\s*([-*+]|\d+[.)])\s+/.test(line)) {
+      const items = [];
+      while (i < lines.length && (/^\s*([-*+]|\d+[.)])\s+/.test(lines[i]) || (/^\s{2,}\S/.test(lines[i]) && items.length))) {
+        const mm = lines[i].match(/^(\s*)([-*+]|\d+[.)])\s+(.*)$/);
+        if (mm) items.push({ depth: Math.floor(mm[1].replace(/\t/g, '    ').length / 2), ordered: /\d/.test(mm[2]), text: mm[3].replace(/^\[[ xX]\]\s*/, m2 => m2.includes(' ]') ? '☐ ' : '☑ ') });
+        else items[items.length - 1].text += ' ' + lines[i].trim();
+        i++;
+      }
+      const build = (from, depth) => {
+        const tag = items[from].ordered ? 'ol' : 'ul';
+        let html = `<${tag}>`, j = from;
+        while (j < items.length && items[j].depth >= depth) {
+          if (items[j].depth > depth) { const [sub, next] = build(j, items[j].depth); html = html.replace(/<\/li>$/, sub + '</li>'); j = next; continue; }
+          html += `<li>${inline(items[j].text)}</li>`; j++;
+        }
+        return [html + `</${tag}>`, j];
+      };
+      let j = 0;
+      while (j < items.length) { const [html, next] = build(j, items[j].depth); out.push(html); j = next; }
+      continue;
+    }
+    const para = [];
+    while (i < lines.length && lines[i].trim() && !/^(#{1,6}\s|```|>|\s*([-*+]|\d+[.)])\s+|\s*\|.*\|\s*$)/.test(lines[i])) para.push(lines[i++]);
+    if (!para.length) { para.push(lines[i++]); }
+    out.push(`<p>${para.map(inline).join('<br>')}</p>`);
+  }
+  return out.join('');
+}
+
+// Frontmatter: just the simple "key: value" lines this needs.
+function frontmatter(text) {
+  const m = text.match(/^---\n([\s\S]*?)\n---\n?/);
+  if (!m) return [{}, text];
+  const props = {};
+  for (const line of m[1].split('\n')) {
+    const kv = line.match(/^([\w -]+):\s*(.*)$/);
+    if (!kv) continue;
+    let v = kv[2].trim();
+    if (/^'.*'$/.test(v)) v = v.slice(1, -1).replace(/''/g, "'");
+    else if (/^".*"$/.test(v)) try { v = JSON.parse(v); } catch { v = v.slice(1, -1); }
+    props[kv[1].trim().toLowerCase()] = v;
+  }
+  return [props, text.slice(m[0].length)];
+}
+
+async function importVault(entries) {
+  entries = entries.filter(e => !/(^|\/)(\.obsidian|\.trash)\//.test(e.path));
+  const notes = entries.filter(e => /\.md$/i.test(e.path));
+  if (!notes.length) return toast('No notes (.md files) found there');
+  if (!okToReplace()) return;
+  if (notes.length > 400 && !confirm(`This vault has ${notes.length} notes, so the diagram may be slow. Carry on?`)) return;
+  toast(`Reading ${notes.length} notes…`);
+  const top = notes[0].path.includes('/') ? notes[0].path.split('/')[0] : '';
+  const vaultName = notes.every(e => e.path.startsWith(top + '/')) && top ? top : 'Obsidian vault';
+  const byName = new Map(entries.map(e => [e.path.split('/').pop().toLowerCase(), e]));
+  const byPath = new Map(entries.map(e => [e.path.toLowerCase(), e]));
+  const findFile = (ref, from) => {
+    ref = decodeURIComponent(ref.split('#')[0]);
+    const dir = from.split('/').slice(0, -1).join('/');
+    return byPath.get(((dir ? dir + '/' : '') + ref).toLowerCase()) || byPath.get(((top ? top + '/' : '') + ref).toLowerCase()) || byName.get(ref.split('/').pop().toLowerCase());
+  };
+  const picture = async (entry) => { try { return await readImage(entry.blob); } catch { return null; } };
+  const items = [];
+  for (const e of notes) {
+    const [props, rest] = frontmatter(await e.blob.text());
+    let meta = null;
+    try { meta = props.spider ? JSON.parse(props.spider) : null; } catch {}
+    let body = rest;
+    const sections = {};
+    if (meta) {   // our own export: pull the generated sections back out
+      body = body.replace(/^## (Branches|Links)\n((?:- .*\n?)*)/gm, (m, h, list) => { sections[h] = list.trim().split('\n').filter(Boolean); return ''; });
+      if (meta.img) body = body.replace(new RegExp('^!\\[\\[' + meta.img.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\]\\]\\s*'), '');
+    }
+    const html = markdownToHtml(body.trim());
+    const holder = document.createElement('div');
+    holder.innerHTML = html;
+    for (const img of holder.querySelectorAll('img[data-embed]')) {
+      const ref = img.dataset.embed, f = /^data:/.test(ref) ? null : findFile(ref, e.path), pic = f && await picture(f);
+      if (pic) { img.src = pic.src; img.removeAttribute('data-embed'); } else img.remove();
+    }
+    const name = e.path.split('/').pop().replace(/\.md$/i, '');
+    const branchOf = typeof props['branch of'] === 'string' ? props['branch of'].replace(/^\[\[|\]\]$/g, '') : null;
+    items.push({ name, meta, branchOf, sections, notes: sanitizeNotes(holder.innerHTML), img: meta?.img && findFile(meta.img, e.path) });
+  }
+  // Build the diagram: our own exports keep their tree and positions; other notes become free bubbles.
+  const nodes = {}, links = {}, idOf = new Map();
+  let nextId = 1;
+  const main = { id: 0, text: vaultName, x: 0, y: 0, parent: null, kind: 'main', color: ROOT_FILL };
+  const own = items.some(it => it.meta);
+  if (!own) nodes[0] = main;
+  const cols = Math.ceil(Math.sqrt(items.length));
+  for (const [k, it] of items.entries()) {
+    const id = nextId++;
+    idOf.set(it.name.toLowerCase(), id);
+    const m = it.meta || {}, n = { id, text: m.text || it.name, x: +m.x || (k % cols) * 320 - cols * 160, y: +m.y || (Math.floor(k / cols) + 1) * 220, color: m.color || ROOT_FILL };
+    for (const key of ['kind', 'order', 'shape', 'fill', 'bold', 'italic', 'size', 'imgSize', 'line', 'collapsed']) if (m[key] != null) n[key] = m[key];
+    if (!it.meta) Object.assign(n, { kind: 'free', shape: 'text' });
+    if (it.notes && hasNotes({ notes: it.notes })) n.notes = it.notes;
+    if (it.img) { const pic = await picture(it.img); if (pic) n.img = pic; }
+    n.parent = null; n._it = it;
+    nodes[id] = n;
+  }
+  const idFor = ref => idOf.get(String(ref || '').replace(/^\[\[|\]\]$/g, '').split(/[|#]/)[0].trim().toLowerCase());
+  const oldId = {};
+  for (const n of Object.values(nodes)) if (n._it?.meta?.id != null) oldId[n._it.meta.id] = n.id;
+  for (const n of Object.values(nodes)) {
+    const it = n._it;
+    if (!it) continue;
+    if (it.branchOf && idFor(it.branchOf) != null && idFor(it.branchOf) !== n.id) { n.parent = idFor(it.branchOf); delete n.kind; }
+    else if (it.meta && !n.kind) n.kind = 'main';
+    for (const line of it.sections.Links || []) {
+      const mm = line.match(/^- (?:(.*?)::\s*)?\[\[([^\]]+)\]\]/), to = mm && idFor(mm[2]);
+      if (to == null || to === n.id) continue;
+      const lid = nextId++, look = (it.meta.links || []).find(l => oldId[l.to] === to && !l.note) || {};
+      links[lid] = { id: lid, from: n.id, to, ...(mm[1] ? { label: mm[1].trim() } : {}), ...cleanLine(look), ...(look.color ? { color: look.color } : {}) };
+    }
+  }
+  for (const n of Object.values(nodes)) delete n._it;
+  commit();
+  dropPendingNotes();
+  doc = normalize({ nextId, settings: { ...defaults(), autoTidy: own }, nodes, links, title: vaultName });
+  for (const n of all()) if (n.notes) syncNoteLinks(n);   // [[links]] in the notes become links on the diagram
+  sel = mains()[0].id; selLink = null;
+  countKids();
+  if (!own) layout(true);   // spread a plain vault out, pulling linked notes together
+  render(); fit(); setFile(null); hideHome();
+  toast(`Opened ${items.length} notes from "${vaultName}"`);
+}
+on('#homeVault', 'click', () => $('#vaultDir').click());
+$('#vaultDir').addEventListener('change', e => {
+  const entries = [...e.target.files].map(f => ({ path: f.webkitRelativePath || f.name, blob: f }));
+  e.target.value = '';
+  if (entries.length) importVault(entries).catch(err => toast("Couldn't read that vault: " + err.message));
+});
 
 /* ---------- link labels ---------- */
 // A short label on a link ("worked for", "created"), read from the first bubble to the second.

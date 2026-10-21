@@ -48,6 +48,7 @@ EXPORT_FILTERS = {  # kind -> (file-dialog filters, default extension)
     'md': ([('Markdown', ['*.md'])], '.md'),
     'txt': ([('Text files', ['*.txt'])], '.txt'),
     'docx': ([('Word documents', ['*.docx'])], '.docx'),
+    'zip': ([('Zip archives', ['*.zip'])], '.zip'),
 }
 
 def config_dir():
