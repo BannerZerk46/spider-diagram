@@ -2430,8 +2430,18 @@ const plainText = n => {
 // One main idea: it's the title, its branches are headings. Several: each main idea is a heading and
 // its branches are subheadings (h2). Free bubbles get their own section. Every block also lists the
 // bubbles linked to it. "indent" is how far a block sits in a plain-text outline.
+// Which bubbles list a link, and which way: an arrow means it belongs to the bubble it points away
+// from (A → B: listed under A; A ← B: under B), both arrows under both, and no arrow under both
+// (as "to" from one, "from" from the other).
+function linkSides(l) {
+  const arrow = l.arrow || LINE_DEFAULTS.link.arrow;
+  if (arrow === 'end') return [[l.from, l.to, 'out']];
+  if (arrow === 'start') return [[l.to, l.from, 'out']];
+  if (arrow === 'both') return [[l.from, l.to, 'out'], [l.to, l.from, 'out']];
+  return [[l.from, l.to, 'out'], [l.to, l.from, 'in']];
+}
 function linkedNames(id) {
-  return Object.values(doc.links).flatMap(l => l.from === id ? [[l.to, l]] : l.to === id ? [[l.from, l]] : [])
+  return Object.values(doc.links).flatMap(l => linkSides(l).filter(([own]) => own === id).map(([, o]) => [o, l]))
     .map(([o, l]) => (plainText(N(o)) || 'untitled') + (l.label ? ` (${l.label})` : ''));
 }
 function outlineBlocks() {
@@ -3596,8 +3606,8 @@ function followWiki(name) {
 function showNoteLinks(n) {
   const box = $('#notesLinks');
   if (!n) { box.innerHTML = ''; return; }
-  const rows = Object.values(doc.links).filter(l => l.from === n.id || l.to === n.id).map(l => {
-    const out = l.from === n.id, other = N(out ? l.to : l.from);
+  const rows = Object.values(doc.links).flatMap(l => linkSides(l).filter(([own]) => own === n.id).map(([, o, dir]) => [l, o, dir])).map(([l, o, dir]) => {
+    const out = dir === 'out', other = N(o);
     const what = l.label ? `<b>${esc(l.label)}</b>` : l.note ? (out ? 'mentions' : 'mentioned in') : out ? 'links to' : 'linked from';
     return `<div class="nl"><span>${out ? '→' : '←'}</span><span>${what}</span><button data-go="${other.id}">[[${esc(bubbleName(other) || 'untitled')}]]</button></div>`;
   });
@@ -3635,6 +3645,8 @@ function vaultZip() {
     files.push({ name: `${folder}/attachments/${name}`, data: b64bytes(m[2].replace(/\s/g, '')) });
     return `attachments/${name}`;
   };
+  // A link with its arrow at the start is the same as one the other way round with the arrow at the end.
+  const canon = Object.values(doc.links).map(l => l.arrow === 'start' ? { ...l, from: l.to, to: l.from, arrow: 'end' } : l);
   for (const n of all()) {
     const name = fileOf[n.id], meta = { id: n.id, x: Math.round(n.x), y: Math.round(n.y), color: n.color };
     for (const k of ['kind', 'order', 'shape', 'fill', 'bold', 'italic', 'size', 'imgSize', 'line', 'collapsed']) if (n[k] != null) meta[k] = n[k];
@@ -3650,9 +3662,9 @@ function vaultZip() {
     }
     const kids = ordered(n.id);
     if (kids.length) body.push('## Branches', ...kids.map(c => `- [[${fileOf[c.id]}]]`), '');
-    const out = Object.values(doc.links).filter(l => l.from === n.id && !l.note);
+    const out = canon.filter(l => l.from === n.id && !l.note);
     if (out.length) body.push('## Links', ...out.map(l => `- ${l.label ? l.label.replace(/::/g, ':') + ':: ' : ''}[[${fileOf[l.to]}]]`), '');
-    const looks = Object.values(doc.links).filter(l => l.from === n.id).map(l => ({ to: l.to, ...cleanLine(l), ...(l.color ? { color: l.color } : {}), ...(l.note ? { note: true } : {}) }))
+    const looks = canon.filter(l => l.from === n.id).map(l => ({ to: l.to, ...cleanLine(l), ...(l.color ? { color: l.color } : {}), ...(l.note ? { note: true } : {}) }))
       .filter(l => Object.keys(l).length > 1);
     if (looks.length) meta.links = looks;
     const props = ['---', ...(n.parent !== null ? [`branch of: "[[${fileOf[n.parent]}]]"`] : []), `spider: ${yamlStr(JSON.stringify(meta))}`, '---', ''];
