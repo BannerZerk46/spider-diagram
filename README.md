@@ -2,7 +2,7 @@
 
 Make spider diagrams (mind maps) quickly with the keyboard, then export them as pictures or as notes for Word, Google Docs or Markdown.
 
-![An example spider diagram](examples/spider-diagram-tour-preview.png)
+![An example spider diagram](examples/spider-diagram-tour.png)
 
 ## Download
 
