@@ -1379,7 +1379,8 @@ function scene(ui, theme = appTheme) {
   const taken = [];
   linkCurves = []; linkLabels = {};
   // With a linked bubble selected, links that don't touch it fade back, so its own connections stand out.
-  const focus = ui && sel != null && selLink == null && N(sel) ? visibleOf(sel) : null;
+  // (While a tag is highlighted, that decides instead: links touching a tagged bubble stay, whatever's selected.)
+  const focus = ui && !focusTag && sel != null && selLink == null && N(sel) ? visibleOf(sel) : null;
   // Labelled links are coloured by their label: each different label takes the next rainbow colour, in
   // the order the labels first appeared, so every "Created" link matches. A colour picked by hand wins.
   const labelColor = {};
