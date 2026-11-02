@@ -27,7 +27,7 @@ The server stops by itself about two minutes after you close the tab.
 import base64, hashlib, html, json, os, platform, re, secrets, shutil, struct, subprocess, sys, tempfile, threading, time, webbrowser, zlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import quote
+from urllib.parse import parse_qs, quote, urlsplit
 from urllib.request import Request, urlopen
 
 HERE = Path(__file__).resolve().parent
@@ -84,6 +84,7 @@ SKIP_DIRS = {'node_modules', '__pycache__', 'venv', 'site-packages', 'Trash'}
 MAX_DEPTH, MAX_FILES = 6, 3000
 
 last_seen = time.time()
+live, closed_at = 0, None   # tabs connected right now, and when the last one went
 lock = threading.Lock()
 summaries = {}   # path -> ((mtime, size), summary): files are only re-read when they change
 last_dir = documents_dir()
@@ -437,6 +438,8 @@ class Handler(BaseHTTPRequestHandler):
         global last_seen
         if not self.host_ok():
             return self.send(403, {'error': 'forbidden'})
+        if self.path.startswith('/api/alive?'):
+            return self.alive()
         if self.path.split('?')[0] not in ('/', '/index.html'):
             return self.send(404, {'error': 'not found'})
         last_seen = time.time()
@@ -444,9 +447,36 @@ class Handler(BaseHTTPRequestHandler):
         html = html.replace('<!--spider-host-->', f'<script>window.SPIDER_HOST = {json.dumps({"token": TOKEN})};</script>', 1)
         self.send(200, html.encode(), 'text/html; charset=utf-8')
 
+    def alive(self):
+        """Each open tab keeps this connection open. Closing the tab (or the browser) drops it, which is
+        how the launcher knows when nothing is using it any more, whatever the browser."""
+        global live, closed_at
+        if parse_qs(urlsplit(self.path).query).get('token') != [TOKEN]:
+            return self.send(403, {'error': 'forbidden'})
+        self.send_response(200)
+        self.send_header('Content-Type', 'text/event-stream')
+        self.send_header('Cache-Control', 'no-store')
+        self.end_headers()
+        with lock:
+            live += 1
+        try:
+            while True:
+                self.wfile.write(b': still here\n\n')
+                self.wfile.flush()
+                time.sleep(1)
+        except OSError:
+            pass
+        finally:
+            with lock:
+                live -= 1
+                if not live:
+                    closed_at = time.time()
+
     def do_POST(self):
         global last_seen
-        if not self.host_ok() or self.headers.get('X-Spider-Token') != TOKEN:
+        if not self.host_ok():
+            return self.send(403, {'error': 'forbidden'})
+        if self.headers.get('X-Spider-Token') != TOKEN:
             return self.send(403, {'error': 'forbidden'})
         last_seen = time.time()
         try:
@@ -714,17 +744,36 @@ def main():
         return
 
     def watchdog():
+        # Stops a few seconds after the last tab closes (a reload is back well within that). A tab from
+        # an older version, without the connection, just checks in now and then: then it's IDLE_EXIT.
+        global last_seen
+        before = time.time()
         while True:
-            time.sleep(15)
-            if time.time() - last_seen > IDLE_EXIT:
+            time.sleep(1)
+            now = time.time()
+            if now - before > 20:   # the computer was asleep: give the tabs a chance to reconnect
+                last_seen = now
+            before = now
+            if live:
+                continue
+            if (closed_at is not None and now - closed_at > 3 and last_seen < closed_at) or now - last_seen > IDLE_EXIT:
                 server.shutdown()
                 return
 
     threading.Thread(target=watchdog, daemon=True).start()
-    print(f'Spider Diagram is running at {url}\nYou can minimise this window. Everything stops by itself about '
-          f'{IDLE_EXIT // 60} minutes after you close the browser tab.')
+    print(f'Spider Diagram is running at {url}\nYou can minimise this window. It stops by itself a few seconds '
+          'after you close the browser tab.')
     if browser:
-        webbrowser.open(url)
+        def open_tab():
+            # A tab left open from last time reconnects by itself within a second or two: then use that
+            # one rather than opening another. (Opening a file always gets a tab to open it in.)
+            if not args:
+                for _ in range(30):
+                    time.sleep(0.1)
+                    if live:
+                        return
+            webbrowser.open(url)
+        threading.Thread(target=open_tab, daemon=True).start()
     try:
         server.serve_forever()
     except KeyboardInterrupt:

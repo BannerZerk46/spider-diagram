@@ -486,6 +486,7 @@
 <!-- Notices that show wherever you are, homepage included: a new version, and the offer to install. -->
 <div id="toast"></div>
 <div id="notices">
+  <div id="serverBar" class="notice" role="alert" hidden><span id="serverText"></span><button id="serverCopy" title="Download this diagram as a .spider file">Save a copy</button></div>
   <div id="updateBar" class="notice" hidden><span id="updateText"></span><button id="updateGo" class="primary">Update now</button><button id="updateLater">Later</button></div>
   <div id="homeInstall" class="notice" hidden>
     <svg class="ic" aria-hidden="true"><use href="#i-logo"/></svg>
@@ -1319,16 +1320,21 @@ function bowCurve(a, b, bow) {
   const m = { x: (a.x + b.x) / 2 - dy / len * off, y: (a.y + b.y) / 2 + dx / len * off };
   return [a, lerp(a, m, 2 / 3), lerp(b, m, 2 / 3), b];
 }
-// Try a range of arcs and keep the one that runs behind the fewest other bubbles and keeps clear of the
-// links already placed (`taken`: points along them). When several are equally clear, a short link
-// (bubbles close together) stays straight, and a longer one takes a gentle curve, which reads better
-// over a distance.
-function routeLink(p, n, others, taken = []) {
-  const a = { x: p.x, y: p.y }, b = { x: n.x, y: n.y };
-  const ideal = Math.hypot(b.x - a.x, b.y - a.y) < 320 ? 0 : 0.14;
+// A link is drawn like the branch lines: an S-curve that leaves and arrives along the main direction
+// (so it meets each bubble square on, and an arrowhead points straight into it), or straight, per the
+// diagram's line setting. If that runs behind another bubble, or along a link already placed (`taken`:
+// points along them), it tries the S the other way round, then arcs bowing further and further out.
+function sCurve(a, b, across) {
+  if (across) { const mx = (a.x + b.x) / 2; return [a, { x: mx, y: a.y }, { x: mx, y: b.y }, b]; }
+  const my = (a.y + b.y) / 2; return [a, { x: a.x, y: my }, { x: b.x, y: my }, b];
+}
+function routeLink(p, n, others, taken = [], line = LINE_DEFAULTS.link) {
+  const a = { x: p.x, y: p.y }, b = { x: n.x, y: n.y }, wide = Math.abs(b.x - a.x) >= Math.abs(b.y - a.y);
+  const options = doc.settings.lines === 'straight' ? [[aimArrows(bowCurve(a, b, 0), p, n, line), 0]]
+    : [[sCurve(a, b, wide), 0], [sCurve(a, b, !wide), 3]];
+  for (const bow of [0.14, -0.14, 0.3, -0.3, 0.5, -0.5, 0.8, -0.8]) options.push([aimArrows(bowCurve(a, b, bow), p, n, line), 6 + Math.abs(bow) * 10]);
   let best = null, score = Infinity;
-  for (const bow of [0, 0.14, -0.14, 0.3, -0.3, 0.5, -0.5, 0.8, -0.8]) {
-    const P = bowCurve(a, b, bow);
+  for (const [P, cost] of options) {
     let hits = 0, near = 0;
     for (let i = 2; i < 30; i++) {
       const q = bezAt(P, i / 31);
@@ -1340,10 +1346,37 @@ function routeLink(p, n, others, taken = []) {
       const hiddenEnd = outlineDist(p, q.x, q.y) < 6 || outlineDist(n, q.x, q.y) < 6;
       if (!hiddenEnd && taken.some(t => Math.abs(t.x - q.x) < 14 && Math.abs(t.y - q.y) < 14)) near++;
     }
-    const s = hits * 1000 + near * 40 + Math.abs(Math.abs(bow) - ideal) * 10 + (bow < 0 ? 0.01 : 0);
-    if (s < score) { score = s; best = P; }
+    const sc = hits * 1000 + near * 40 + cost;
+    if (sc < score) { score = sc; best = P; }
   }
   return best;
+}
+// (For straight links and the fallback arcs.) An arrow must point at its bubble, square onto its edge: aim at the nearest point of the bubble's middle
+// line (its centre, for a round one), so a link reaching a wide bubble from above comes straight down
+// onto it, and one from the side runs into its rounded end. The link is then one smooth arc into that
+// spot, bending the same way, and as much, as the route chose (a straight line stays straight).
+function aimArrows(P, p, n, line) {
+  const atEnd = line.arrow === 'end' || line.arrow === 'both', atStart = line.arrow === 'start' || line.arrow === 'both';
+  if (!atEnd && !atStart) return P;
+  const spine = (bub, from) => {
+    const g = geom[bub.id] || measure(bub), half = g.shape === 'ellipse' ? 0 : Math.max(0, (g.w - g.h) / 2);
+    return { x: clamp(from.x, bub.x - half, bub.x + half), y: bub.y };
+  };
+  const ta = atStart ? spine(p, n) : { x: p.x, y: p.y }, tb = atEnd ? spine(n, p) : { x: n.x, y: n.y };
+  // How far the routed curve turns away from straight at its end; the arc keeps that.
+  let bend = Math.atan2(P[3].y - P[2].y, P[3].x - P[2].x) - Math.atan2(P[3].y - P[0].y, P[3].x - P[0].x);
+  bend = Math.atan2(Math.sin(bend), Math.cos(bend));
+  const base = Math.atan2(tb.y - ta.y, tb.x - ta.x);
+  const u = { x: Math.cos(base + bend), y: Math.sin(base + bend) }, v = { x: Math.cos(base - bend), y: Math.sin(base - bend) };
+  // Where a line heading `dir` into the bubble at `t` crosses its edge.
+  const edge = (bub, t, dir) => {
+    let lo = 0, hi = (geom[bub.id]?.w || 200) + (geom[bub.id]?.h || 100);
+    for (let i = 0; i < 30; i++) { const m = (lo + hi) / 2; outlineDist(bub, t.x - dir.x * m, t.y - dir.y * m) < 0 ? lo = m : hi = m; }
+    return { x: t.x - dir.x * hi, y: t.y - dir.y * hi };
+  };
+  const ea = atStart ? edge(p, ta, { x: -v.x, y: -v.y }) : ta, eb = atEnd ? edge(n, tb, u) : tb;
+  const k = Math.hypot(eb.x - ea.x, eb.y - ea.y) / 3 / Math.max(0.5, Math.cos(bend));
+  return [ea, { x: ea.x + v.x * k, y: ea.y + v.y * k }, { x: eb.x - u.x * k, y: eb.y - u.y * k }, eb];
 }
 const LINE_DEFAULTS = { tree: { style: 'solid', arrow: 'none', width: 'normal' }, link: { style: 'dashed', arrow: 'none', width: 'normal' } };
 const WIDTH_FACTOR = { thin: 0.55, normal: 1, thick: 1.6 };
@@ -1363,7 +1396,7 @@ function drawLine(p, n, line, color, base, opts) {
   const w = base * WIDTH_FACTOR[line.width], atEnd = line.arrow === 'end' || line.arrow === 'both', atStart = line.arrow === 'start' || line.arrow === 'both';
   const a = { x: p.x, y: p.y }, b = { x: n.x, y: n.y };
   let P;
-  if (link) P = curve || routeLink(p, n, others);
+  if (link) P = curve || routeLink(p, n, others, [], line);
   else P = treeCurve(a, b);
   const trimA = link || atStart || geom[p.id]?.shape === 'text', trimB = link || atEnd || geom[n.id]?.shape === 'text', gap = link ? 3 : 2;
   const t0 = trimA ? crossing(P, q => outlineDist(p, q.x, q.y) - gap, 0, 1) : 0;
@@ -1489,7 +1522,8 @@ function scene(ui, theme = appTheme) {
   for (const l of Object.values(doc.links)) {   // links go over the tree lines, under the bubbles
     const a = visibleOf(l.from), b = visibleOf(l.to);
     if (a === b) continue;
-    const others = ns.filter(o => o.id !== a && o.id !== b), curve = routeLink(N(a), N(b), others, taken);
+    const others = ns.filter(o => o.id !== a && o.id !== b);
+    const curve = routeLink(N(a), N(b), others, taken, { ...LINE_DEFAULTS.link, ...cleanLine(l) });
     for (let i = 0; i <= 30; i++) taken.push(bezAt(curve, i / 30));   // later links steer clear of this one
     linkCurves.push(curve);
     const auto = l.label && labelColor[l.label.toLowerCase()];
@@ -2596,10 +2630,41 @@ function download(blob, name) {
 const serializeText = () => JSON.stringify(toFile(doc), null, 1);
 const serialize = () => new Blob([serializeText()], { type: 'application/json' });
 async function api(path, body = {}) {
-  const r = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Spider-Token': HOST.token }, body: JSON.stringify(body) });
-  const j = await r.json().catch(() => ({ error: 'Spider Diagram has stopped running. Open it again to keep saving' }));
+  const stopped = 'Spider Diagram has stopped running. Open it again to keep saving';
+  let r;
+  try { r = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Spider-Token': HOST.token }, body: JSON.stringify(body) }); }
+  catch { appStopped(); throw new Error(stopped); }
+  if (r.status === 403) { appStopped(); throw new Error(stopped); }   // a new copy of the app, which doesn't know this tab
+  const j = await r.json().catch(() => ({ error: stopped }));
   if (!r.ok || j.error) throw new Error(j.error || r.statusText);
   return j;
+}
+// Each tab keeps a connection open to the launcher, which stops a few seconds after the last one goes
+// (closing a tab drops it). If the launcher stops while a tab is still open (its window was closed, or
+// the computer restarted), the tab says so instead of failing to save, and offers to reconnect once the
+// app is open again by reloading itself, rather than the app opening another tab. The diagram is kept in
+// the browser meanwhile, so reloading loses nothing.
+let appGone = false, appRestarting = false, alive = null;
+function connectApp() {
+  alive = new EventSource('/api/alive?token=' + encodeURIComponent(HOST.token));
+  alive.onerror = () => { if (!appRestarting) api('/api/ping').catch(() => {}); };   // gone, or just a hiccup?
+}
+function appStopped() {
+  if (appGone || appRestarting) return;
+  appGone = true;
+  alive?.close();
+  $('#serverText').textContent = "Spider Diagram has stopped, so saving won't work. Open it again and this tab carries on: your diagram is kept here.";
+  $('#serverBar').hidden = false;
+  const probe = async () => {   // has the app been opened again? (it waits a moment for this tab before opening another)
+    try { if ((await fetch('/', { cache: 'no-store' })).ok) {
+      $('#serverText').textContent = 'Reconnecting…';
+      if (editing) finishEdit();
+      flushNotes(); render();
+      return location.reload();
+    } } catch {}
+    setTimeout(probe, 1000);
+  };
+  setTimeout(probe, 1000);
 }
 async function writeTo(handle) {
   const w = await handle.createWritable();
@@ -2675,7 +2740,9 @@ function loadDiagram(text, name, path = null, handle = null) {
 $('#file').addEventListener('change', e => { const f = e.target.files[0]; e.target.value = ''; if (f) openFile(f); });
 let launchedWithFile = false;
 if (HOST) {
-  setInterval(() => api('/api/ping').catch(() => {}), 30000);   // keeps the launcher alive while the tab is open
+  connectApp();
+  setInterval(() => { if (!appGone) api('/api/ping').catch(() => {}); }, 30000);   // for a launcher that doesn't know the connection
+  window.addEventListener('pageshow', e => { if (e.persisted && !appGone) connectApp(); });   // back from the browser's page cache
   try { const f = JSON.parse(localStorage.getItem(FILE_STORE)); if (f) { filePath = f.filePath; fileName = f.fileName; dirty = f.dirty; } } catch {}
   const m = location.hash.match(/^#open=(.+)$/);
   launchedWithFile = !!m;
@@ -4507,6 +4574,7 @@ async function runUpdate() {
   catch (err) { toast(err.message); $('#updateText').textContent = 'The update didn\'t work.'; go.disabled = false; return; }
   // Your diagram is kept in the browser as you go, so it's still here after the app restarts.
   $('#updateText').textContent = 'Restarting…';
+  appRestarting = true;
   for (let i = 0; i < 80; i++) {
     await new Promise(r => setTimeout(r, 400));
     try { const r = await fetch('/', { cache: 'no-store' }); if (r.ok && (await r.text()).includes(`'${v}'`)) break; } catch {}
@@ -4515,6 +4583,7 @@ async function runUpdate() {
 }
 on('#updateGo', 'click', runUpdate);
 on('#updateLater', 'click', () => { $('#updateBar').hidden = true; });
+on('#serverCopy', 'click', () => download(serialize(), slug() + '.spider'));
 on('#bCheckUpdate', 'click', () => { closeMenu(); checkUpdate(true); });   // (on the homepage's ⋯ menu)
 let installLater = false;   // "Not now": ask again next time the app starts
 function showInstallOffer() {
