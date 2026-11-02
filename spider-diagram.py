@@ -606,9 +606,24 @@ def installed_program():
     return WIN_APP_DIR / 'Spider Diagram.cmd' if SYSTEM == 'Windows' else INSTALLED['program']
 
 
+def shown_version():
+    """The version to show. The source folder counts as a release when it's exactly the last published
+    version (checked out at the release commit, with nothing changed since); otherwise it's 'dev'."""
+    if EMBEDDED_HTML is not None or VERSION != 'dev':
+        return VERSION
+    try:
+        git = lambda *a: subprocess.run(['git', '-C', str(HERE), *a], capture_output=True, text=True, timeout=5).stdout.strip()
+        released = json.loads((HERE / 'dist' / 'version.json').read_text())['version']
+        if git('rev-parse', 'HEAD') == git('log', '-1', '--format=%H', '--', 'dist/version.json') and not git('status', '--porcelain'):
+            return released
+    except Exception:
+        pass
+    return 'dev'
+
+
 def about():
     packed = EMBEDDED_HTML is not None   # a built single-file copy (not the source folder)
-    return {'version': VERSION, 'system': SYSTEM, 'updates': bool(UPDATE_URL) and packed,
+    return {'version': shown_version(), 'system': SYSTEM, 'updates': bool(UPDATE_URL) and packed,
             'canInstall': packed and SYSTEM in ('Linux', 'Windows'),
             'installed': Path(__file__).resolve() == installed_program()}
 

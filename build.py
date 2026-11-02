@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Build the single-file versions of Spider Diagram into dist/.
 
-    python3 build.py
+    python3 build.py             a development build, into build/: says "Development copy", never updates
+    python3 build.py --release   a release build, into dist/ (release.py runs this; you needn't)
 
-Makes exactly the four files that get handed out (dist/ is emptied first, so it always mirrors them):
+Makes exactly the four files that get handed out (the folder is emptied first, so it always mirrors them):
     dist/spider-diagram-chromeos.html  the app on its own: Chromebooks, or any browser with nothing installed
     dist/spider-diagram-mac.zip        unzips to spider-diagram-mac.command (double-click in Finder); zipped
                                        because a bare .command usually loses its "executable" permission
@@ -13,8 +14,11 @@ Makes exactly the four files that get handed out (dist/ is emptied first, so it 
 
 plus dist/version.json, which installed copies read to find out about (and safely download) updates.
 
-Every build is stamped with a version: the date and time it was built (UTC), e.g. 2026.10.19.1534.
-To publish, commit and push dist/ to the GitHub repository named in release.json
+Only release builds are stamped with a version: the date and time they were built (UTC), e.g.
+2026.10.19.1534, and only they look for updates. So a copy you (or anyone working on the code) build
+to try something out can't replace itself with the published version and lose your changes, and dist/,
+which everyone's copies update from, only ever changes when you release.
+release.py publishes dist/ to the GitHub repository named in release.json
 ({"repo": "username/spider-diagram"}); copies built with that set check
 https://raw.githubusercontent.com/<repo>/main/dist/version.json and offer to update themselves.
 
@@ -22,7 +26,7 @@ Each is spider-diagram.py with index.html (which already contains the tour) and 
 inside, behind a few lines of shell (or, on Windows, batch) that find Python 3 and run the same
 file with it. The Linux and Mac files are identical apart from their names.
 """
-import base64, hashlib, json, os, shutil, time, zipfile, zlib
+import base64, hashlib, json, os, shutil, sys, time, zipfile, zlib
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -107,9 +111,13 @@ def stamp(text, old, new):
     return text.replace(old, new)
 
 
-def build():
-    version = os.environ.get('SPIDER_VERSION') or time.strftime('%Y.%m.%d.%H%M', time.gmtime())
-    update_url = release_config()
+def build(release=False):
+    if release:
+        version = os.environ.get('SPIDER_VERSION') or time.strftime('%Y.%m.%d.%H%M', time.gmtime())
+        update_url = release_config()
+    else:
+        version, update_url = 'dev', ''
+    out = DIST if release else HERE / 'build'
     app = stamp((HERE / 'index.html').read_text(encoding='utf-8'), "const APP_VERSION = 'dev', APP_UPDATE_URL = '';",
                 f"const APP_VERSION = {json.dumps(version)}, APP_UPDATE_URL = {json.dumps(update_url)};".replace('"', "'"))
     src = (HERE / 'spider-diagram.py').read_text(encoding='utf-8')
@@ -123,29 +131,33 @@ def build():
         body = stamp(body, f'{name} = None', f'{name} = ' + pack(data))
     program = HEADER + body
 
-    if DIST.exists():
-        shutil.rmtree(DIST)
-    DIST.mkdir()
-    (DIST / 'spider-diagram-chromeos.html').write_text(app, encoding='utf-8')
-    linux = DIST / 'spider-diagram-linux'
+    if out.exists():
+        shutil.rmtree(out)
+    out.mkdir()
+    (out / 'spider-diagram-chromeos.html').write_text(app, encoding='utf-8')
+    linux = out / 'spider-diagram-linux'
     linux.write_text(program, encoding='utf-8')
     linux.chmod(0o755)
-    with zipfile.ZipFile(DIST / 'spider-diagram-mac.zip', 'w', zipfile.ZIP_DEFLATED) as z:
+    with zipfile.ZipFile(out / 'spider-diagram-mac.zip', 'w', zipfile.ZIP_DEFLATED) as z:
         info = zipfile.ZipInfo('spider-diagram-mac.command', time.localtime()[:6])
         info.create_system = 3                  # unix, so the permissions below are honoured
         info.external_attr = 0o100755 << 16
         info.compress_type = zipfile.ZIP_DEFLATED
         z.writestr(info, program)
-    windows = DIST / 'spider-diagram-windows.cmd'
+    windows = out / 'spider-diagram-windows.cmd'
     windows.write_bytes((HEADER_WINDOWS + body).replace('\r\n', '\n').replace('\n', '\r\n').encode('utf-8'))
     # What installed copies check: the newest version, and checksums so a broken download is never installed.
-    files = ('spider-diagram-linux', 'spider-diagram-windows.cmd', 'spider-diagram-chromeos.html')
-    (DIST / 'version.json').write_text(json.dumps({'version': version, 'sha256': {
-        f: hashlib.sha256((DIST / f).read_bytes()).hexdigest() for f in files}}, indent=1) + '\n', encoding='utf-8')
-    for f in sorted(DIST.iterdir()):
+    if release:
+        files = ('spider-diagram-linux', 'spider-diagram-windows.cmd', 'spider-diagram-chromeos.html')
+        (out / 'version.json').write_text(json.dumps({'version': version, 'sha256': {
+            f: hashlib.sha256((out / f).read_bytes()).hexdigest() for f in files}}, indent=1) + '\n', encoding='utf-8')
+    for f in sorted(out.iterdir()):
         print(f'{f.relative_to(HERE)}  {f.stat().st_size // 1024} KB')
-    print(f'Version {version}' + ('' if update_url else '  (no release.json yet: these copies won\'t look for updates)'))
+    if not release:
+        print('Development build: says "Development copy" and never updates itself (release.py makes the published ones)')
+    else:
+        print(f'Version {version}' + ('' if update_url else '  (no release.json yet: these copies won\'t look for updates)'))
 
 
 if __name__ == '__main__':
-    build()
+    build(release='--release' in sys.argv[1:])

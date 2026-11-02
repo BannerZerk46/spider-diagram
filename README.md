@@ -31,4 +31,8 @@ All versions: [releases page](https://github.com/BannerZerk46/spider-diagram/rel
 
 ## For developers
 
-`index.html` is the whole app, `spider-diagram.py` is the launcher, and `build.py` packs them into the single-file versions in `dist/`. To publish a new version: `python3 release.py "What changed"` (builds, commits, pushes, and creates the GitHub release).
+`index.html` is the whole app and `spider-diagram.py` is the launcher. Run `python3 spider-diagram.py` to try your changes (refresh the page to see edits to `index.html`).
+
+`python3 build.py` packs them into the four single-file versions, in `build/`. These are development builds: they say "Development copy" and never update themselves, so they can't overwrite your work with the published version. Running from the source folder is the same, unless it's exactly a published release.
+
+To publish a new version: `python3 release.py "What changed"`. It makes the release build in `dist/` (stamped with a version, and set to update from this repository), commits, pushes, and creates the GitHub release.
