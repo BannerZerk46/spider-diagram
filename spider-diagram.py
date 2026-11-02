@@ -671,7 +671,8 @@ def check_update():
     if not about()['updates']:
         return {'available': False}
     info = latest()
-    return {'available': str(info.get('version', '')) > VERSION, 'version': info.get('version'), 'current': VERSION}
+    return {'available': str(info.get('version', '')) > VERSION, 'version': info.get('version'), 'current': VERSION,
+            'summary': str(info.get('summary', ''))}
 
 
 RESTART = False

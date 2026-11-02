@@ -35,4 +35,4 @@ All versions: [releases page](https://github.com/BannerZerk46/spider-diagram/rel
 
 `python3 build.py` packs them into the four single-file versions, in `build/`. These are development builds: they say "Development copy" and never update themselves, so they can't overwrite your work with the published version. Running from the source folder is the same, unless it's exactly a published release.
 
-To publish a new version: `python3 release.py "What changed"`. It makes the release build in `dist/` (stamped with a version, and set to update from this repository), commits, pushes, and creates the GitHub release.
+To publish a new version: `python3 release.py "One-sentence summary" "More detail"`. It adds the version to the changelog (shown in the app's version menu, and the summary in the update notice), makes the release build in `dist/` (stamped with a version, and set to update from this repository), commits, pushes, and creates the GitHub release.

@@ -20,6 +20,7 @@
     --stage: #fbfaf7; --dot: #d9d6cc; --on-bg: #e8efff; --on-line: #b9ccf7; --on-ink: #1d4ed8;
     --editor: #ffffff; --editor-ink: #1f2328; --toast: #1f2328; --toast-ink: #ffffff;
     --hint: rgba(255,255,255,.9); --menu-shadow: 0 10px 30px rgba(0,0,0,.15);
+    --ok: #15803d; --ok-bg: #e7f6ec; --ok-line: #9fd9b2;
     color-scheme: light;
   }
   :root[data-theme="dark"] {
@@ -28,6 +29,7 @@
     --stage: #141518; --dot: #2b2e35; --on-bg: #1d2a44; --on-line: #34507f; --on-ink: #9cc0ff;
     --editor: #23262c; --editor-ink: #e4e5e9; --toast: #e4e5e9; --toast-ink: #111214;
     --hint: rgba(26,28,32,.92); --menu-shadow: 0 10px 30px rgba(0,0,0,.55);
+    --ok: #4ade80; --ok-bg: #15281d; --ok-line: #2f6b45;
     color-scheme: dark;
   }
   * { box-sizing: border-box; }
@@ -99,7 +101,7 @@
     font-family: inherit; white-space: pre-wrap; overflow-wrap: anywhere; z-index: 2;
   }
   #hints {
-    position: absolute; left: 12px; bottom: 12px; right: 12px; pointer-events: none;
+    position: absolute; left: 12px; bottom: 12px; right: 170px; pointer-events: none;   /* the version button is on the right */
     display: flex; flex-wrap: wrap; gap: 6px; color: var(--muted); font-size: 12px;
   }
   #hints.collapsed span { display: none; }
@@ -111,6 +113,33 @@
     background: var(--toast); color: var(--toast-ink); padding: 7px 14px; border-radius: 8px; font-size: 13px;
     transition: opacity .2s, transform .2s; pointer-events: none;
   }
+  /* The version button, bottom right of the window (or of the diagram, beside the notes), and its menu */
+  #verWrap { position: fixed; right: 12px; bottom: 12px; z-index: 35; }   /* over the homepage, under the tutorial */
+  #verBtn { display: flex; align-items: center; gap: 6px; padding: 2px 0; font-size: 12px; color: var(--muted); background: none; border: 0; border-radius: 0; }
+  #verBtn:hover, #verBtn[aria-expanded="true"] { text-decoration: underline; text-underline-offset: 3px; }
+  #verBtn .ver-dot { display: none; width: 7px; height: 7px; border-radius: 50%; }
+  #verBtn.is-new { color: var(--accent); font-weight: 600; }
+  #verBtn.is-new .ver-dot { display: block; background: var(--accent); }
+  #verBtn.has-update { color: var(--ok); font-weight: 600; }
+  #verBtn.has-update .ver-dot { display: block; background: var(--ok); animation: verPulse 1.6s ease-in-out infinite; }
+  @keyframes verPulse { 50% { opacity: .35; transform: scale(.7); } }
+  @media (prefers-reduced-motion: reduce) { #verBtn.has-update .ver-dot { animation: none; } }
+  #verMenu { top: auto; bottom: calc(100% + 8px); width: 380px; max-height: min(560px, calc(100vh - 80px)); overflow: auto; gap: 12px; }
+  .ver-head { display: flex; align-items: center; gap: 10px; }
+  .ver-head > .ic { width: 28px; height: 28px; color: var(--accent); }
+  .ver-head b { display: block; font-size: 15px; }
+  .ver-head span { color: var(--muted); font-size: 12.5px; }
+  .ver-head button { margin-left: auto; font-size: 12.5px; padding: 4px 10px; }
+  #verStatus { font-size: 13px; color: var(--muted); }
+  #verStatus .ver-update { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border: 1px solid var(--ok-line); border-radius: 8px; background: var(--ok-bg); color: var(--ink); }
+  #verStatus .ver-update b { color: var(--ok); }
+  #verStatus .ver-update button { align-self: flex-start; }
+  .ver-log { display: flex; flex-direction: column; gap: 12px; font-size: 13px; }
+  .ver-log article { display: flex; flex-direction: column; gap: 3px; }
+  .ver-log h4 { margin: 0; font-size: 13.5px; line-height: 1.35; }
+  .ver-log .ver-when { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 11.5px; }
+  .ver-log .ver-when em { font-style: normal; font-size: 11px; font-weight: 600; color: var(--on-ink); background: var(--on-bg); border-radius: 4px; padding: 0 5px; }
+  .ver-log p { margin: 0; color: var(--muted); line-height: 1.45; }
   #tut {
     position: fixed; right: 20px; bottom: 20px; z-index: 40; width: 460px; max-height: calc(100vh - 32px); overflow: auto;
     display: flex; flex-direction: column; gap: 10px; padding: 16px 20px 18px;
@@ -221,8 +250,6 @@
   .home-folders .note { color: var(--muted); flex-basis: 100%; }
   .home-bar .menu-wrap { position: relative; }
   .home-bar #homeSearch { flex: 1 1 220px; min-width: 160px; }
-  .menu-foot { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; margin-top: 4px; padding: 8px 10px 4px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
-  .menu-foot button { font-size: 12.5px; padding: 3px 10px; }
   .home-tools { display: flex; align-items: center; gap: 10px; padding: 10px 20px 0; }
   .home-tools .home-status { flex: 1; padding: 0; }
   .home-status { padding: 10px 20px 0; color: var(--muted); font-size: 13px; min-height: 18px; }
@@ -496,6 +523,69 @@
     <button id="homeInstallNo" class="icon" title="Don't ask again"><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg></button>
   </div>
 </div>
+<div id="verWrap" class="menu-wrap">
+  <button id="verBtn" aria-haspopup="true" aria-expanded="false" title="Version, updates and what's new"><span class="ver-dot"></span><span id="verLabel"></span></button>
+  <div id="verMenu" class="menu" hidden>
+    <div class="ver-head">
+      <svg class="ic" aria-hidden="true"><use href="#i-logo"/></svg>
+      <div><b>Spider Diagram</b><span id="verFull"></span></div>
+      <button id="verCheck" hidden>Check for updates</button>
+    </div>
+    <div id="verStatus"></div>
+    <div class="menu-title">What's new</div>
+    <div id="verLog" class="ver-log"></div>
+  </div>
+</div>
+<!-- What each version changed, newest first: release.py adds an entry, and the menu above shows them. -->
+<script id="changelog" type="application/json">
+[
+ {
+  "version": "2026.11.02.1517",
+  "summary": "A version menu in the corner shows what's new in each version and offers updates, and the shortcuts list is shorter.",
+  "notes": "The version button sits in the bottom-right corner (on the homepage and while editing). It opens a menu with the version, Check for updates, and a changelog of every release. After an update it's highlighted in blue until you open it, and when an update is waiting it turns green and says Update ready. The update notice now says what the new version does. The Shortcuts list shows just the keys."
+ },
+ {
+  "version": "2026.11.02.1453",
+  "summary": "Links curve like the branch lines, with arrows that point straight into their bubbles, and the app closes itself when you close its tab.",
+  "notes": "Links are drawn like the branch lines: the same S-curve (or straight, with the straight lines setting), with arrowheads that point straight into their bubble, and arcs only to get around other bubbles. The app now stops a few seconds after you close its tab. If it stops while a tab is open, the tab says so, and opening the app again picks that tab back up instead of opening another."
+ },
+ {
+  "version": "2026.11.02.1343",
+  "summary": "Copies running unpublished code say \"Development copy\", and copies people build themselves never update over their work.",
+  "notes": "Development copies: the app shows \"Development copy\" only when it's running unpublished code, and copies anyone builds themselves (python3 build.py) never update, so they can't overwrite work in progress. Release builds come only from release.py."
+ },
+ {
+  "version": "2026.11.02.1143",
+  "summary": "Copy and paste bubbles, a new Edit menu, a simpler colour menu, and tidier lines.",
+  "notes": "Copy and paste: Ctrl+C copies a bubble with everything under it (notes, pictures and links included), Ctrl+V pastes it under another bubble, and Ctrl+Shift+V pastes just its nested bubbles, so another bubble gets the same subsections. Ctrl+X cuts, Ctrl+D duplicates, and indented lists paste in as bubbles. These are all in a new Edit menu. The colour menu has a wide Main button instead of the note, and tidying keeps bubbles off other bubbles' lines."
+ },
+ {
+  "version": "2026.10.21.1553",
+  "summary": "A tidier toolbar and homepage, with File, Insert and Diagram menus.",
+  "notes": "Tidier toolbar and homepage: File, Insert and Diagram menus (adding bubbles shows its keys), Style, colour and picture drop-downs, and two toolbar rows instead of three. The homepage bar has Open and ⋯ menus, with the version and Check for updates, and the sort order sits above your diagrams. Messages now show over the homepage too."
+ },
+ {
+  "version": "2026.10.21.1532",
+  "summary": "Fixed the update notice and the install offer hiding behind the homepage.",
+  "notes": "Fix: the update notice and the offer to install now show wherever you are (they could be hidden behind the homepage). The install offer waits until the tutorial is finished, and has a Not now option."
+ },
+ {
+  "version": "2026.10.21.1529",
+  "summary": "Fixed Obsidian vault import and export.",
+  "notes": "Fix: Obsidian vault import and export work again (the Obsidian vault… button, dropping a vault .zip, and Export → Obsidian vault). Files can now also be dropped onto the homepage."
+ },
+ {
+  "version": "2026.10.21.1424",
+  "summary": "Obsidian-style notes: [[links]], #tags, quick find and Markdown shortcuts.",
+  "notes": "Obsidian-style notes: [[links]] in notes become links on the diagram (and the notes panel lists and edits every link), #tags shown on bubbles (click one to highlight everything tagged), / to find any bubble, Markdown shortcuts while writing notes, and Obsidian vault export and import."
+ },
+ {
+  "version": "2026.10.21.1206",
+  "summary": "The first release on GitHub: Spider Diagram can now install and update itself.",
+  "notes": "First release on GitHub: download links for every system, link labels with automatic colours, link-aware Tidy, and the app can now install and update itself."
+ }
+]
+</script>
 <div id="home" hidden>
   <div class="home-bar">
     <h1><svg class="ic" aria-hidden="true"><use href="#i-logo"/></svg> Spider Diagrams</h1>
@@ -509,12 +599,11 @@
     </div>
     <button id="homeNew" class="primary" title="Start a new diagram"><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg> New diagram</button>
     <div class="menu-wrap">
-      <button id="homeMore" class="icon" aria-haspopup="true" aria-expanded="false" title="Tutorial, example, folders and updates"><svg class="ic" aria-hidden="true"><use href="#i-dots"/></svg></button>
+      <button id="homeMore" class="icon" aria-haspopup="true" aria-expanded="false" title="Tutorial, example diagram and library folders"><svg class="ic" aria-hidden="true"><use href="#i-dots"/></svg></button>
       <div class="menu list" hidden>
         <button id="homeTour" title="A step-by-step tutorial that teaches you everything the app can do"><svg class="ic" aria-hidden="true"><use href="#i-help"/></svg> Tutorial</button>
         <button id="homeExample" title="Open an example diagram that shows off the app's features"><svg class="ic" aria-hidden="true"><use href="#i-logo"/></svg> Example diagram</button>
         <button id="homeFolders" title="Choose which folders are searched for diagrams"><svg class="ic" aria-hidden="true"><use href="#i-folder"/></svg> Library folders…</button>
-        <div class="menu-foot"><span id="versionNote"></span><button id="bCheckUpdate" hidden>Check for updates</button></div>
       </div>
     </div>
     <button id="homeTheme" class="icon" title="Switch between light and dark mode"><svg class="ic" aria-hidden="true"><use href="#i-moon"/></svg></button>
@@ -531,21 +620,18 @@
   <input id="labelEditor" hidden spellcheck="false" maxlength="120" placeholder="Label this link…">
   <div id="hints" class="collapsed">
     <button id="hintToggle" title="Show or hide keyboard shortcuts"><svg class="ic" aria-hidden="true"><use href="#i-keyboard"/></svg> Shortcuts</button>
-    <span><kbd>Tab</kbd> add branch</span>
-    <span><kbd>Enter</kbd> add sibling</span>
-    <span>Type or double-click to edit · <kbd>Esc</kbd> cancels · <kbd>Shift+Enter</kbd> new line</span>
+    <span><kbd>Tab</kbd> branch</span>
+    <span><kbd>Enter</kbd> sibling</span>
+    <span><kbd>Space</kbd> edit</span>
     <span><kbd>Del</kbd> delete</span>
-    <span><kbd>Ctrl+/</kbd> collapse / expand branch</span>
+    <span><kbd>←↑↓→</kbd> move</span>
     <span><kbd>Ctrl+Enter</kbd> notes</span>
-    <span><kbd>←↑↓→</kbd> move selection</span>
-    <span><kbd>Ctrl+C</kbd> / <kbd>Ctrl+V</kbd> copy a bubble and its branch, paste it under another · <kbd>Ctrl+Shift+V</kbd> paste nested bubbles · <kbd>Ctrl+D</kbd> duplicate</span>
-    <span>Paste or drop an image onto a bubble</span>
-    <span>Drag to move (<kbd>Shift</kbd>: single idea) · drop onto another idea to re-attach</span>
-    <span>Drag the link handle on a selected bubble (or <kbd>Alt</kbd>+drag) to another bubble to link them</span>
-    <span>Double-click a link (or select it and type) to label it</span>
-    <span><kbd>/</kbd> find a bubble (by name, notes or #tag)</span>
-    <span>In notes: [[Name]] links to a bubble, #tag tags it, and # / - / 1. / &gt; start headings, lists and quotes</span>
-    <span>Double-click empty space to add a branch there (nothing selected: a free bubble) · scroll to zoom · drag background to pan</span>
+    <span><kbd>Ctrl+/</kbd> fold</span>
+    <span><kbd>/</kbd> find</span>
+    <span><kbd>Ctrl+C</kbd> <kbd>Ctrl+V</kbd> copy, paste</span>
+    <span><kbd>Ctrl+D</kbd> duplicate</span>
+    <span><kbd>Ctrl+Z</kbd> undo</span>
+    <span><kbd>Ctrl+0</kbd> fit</span>
   </div>
   <div id="finder" hidden>
     <input id="finderInput" placeholder="Find a bubble: type a name, words from its notes, or #tag" autocomplete="off" spellcheck="false">
@@ -4527,35 +4613,95 @@ const INSTALL_STORE = 'spider-diagram:no-install-offer';
 async function loadAbout() {
   if (HOST) try { aboutApp = await api('/api/about'); } catch {}
   else aboutApp.updates = !!APP_UPDATE_URL && APP_VERSION !== 'dev';
-  $('#versionNote').textContent = aboutApp.version === 'dev' ? 'Development copy' : 'Version ' + aboutApp.version;
-  $('#bCheckUpdate').hidden = !aboutApp.updates;
+  const dev = aboutApp.version === 'dev';
+  $('#verLabel').textContent = dev ? 'Development copy' : 'v' + aboutApp.version;
+  $('#verFull').textContent = dev ? 'Development copy' : 'Version ' + aboutApp.version + versionDate(aboutApp.version, ', ');
+  $('#verCheck').hidden = !aboutApp.updates;
+  // Just updated: the button stands out until you open its menu, or until the app next starts.
+  if (!dev) try {
+    const before = localStorage.getItem(VER_SEEN);   // (versions before the menu didn't note it: then it's new to anyone but a first-timer)
+    if (before ? before !== aboutApp.version : !firstRun) $('#verBtn').classList.add('is-new');
+    localStorage.setItem(VER_SEEN, aboutApp.version);
+  } catch {}
+  showVersion();
   showInstallOffer();
-  if (aboutApp.updates) setTimeout(() => checkUpdate(false), 2500);
+  if (aboutApp.updates) {
+    setTimeout(() => checkUpdate(false), 2500);
+    setInterval(() => checkUpdate(false), 6 * 3600e3);   // for a tab left open for days
+  }
+}
+const VER_SEEN = 'spider-diagram:version-seen';
+// Versions are the UTC date and time they were made: 2026.11.02.1453 → "2 Nov 2026".
+function versionDate(v, before = '') {
+  const m = /^(\d{4})\.(\d\d)\.(\d\d)/.exec(v);
+  return m ? before + new Date(Date.UTC(+m[1], m[2] - 1, +m[3])).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }) : '';
+}
+let changelog = [];
+try { changelog = JSON.parse($('#changelog').textContent); } catch {}
+// The menu: what's installed, whether there's an update (and what it does), and what each version changed.
+let updateInfo = null, updateState = '';   // updateState: '', 'checking', 'none' or 'failed'
+function showVersion() {
+  const btn = $('#verBtn'), st = $('#verStatus');
+  btn.classList.toggle('has-update', !!updateInfo);
+  $('#verLabel').textContent = updateInfo ? 'Update ready' : aboutApp.version === 'dev' ? 'Development copy' : 'v' + aboutApp.version;
+  btn.title = updateInfo ? `Version ${updateInfo.version} is ready to install` : "Version, updates and what's new";
+  st.replaceChildren();
+  if (updateInfo) {
+    const box = document.createElement('div'), b = document.createElement('b'), p = document.createElement('span'), go = document.createElement('button');
+    box.className = 'ver-update';
+    b.textContent = `Version ${updateInfo.version} is ready`;
+    p.textContent = updateInfo.summary || 'A new version of Spider Diagram.';
+    go.className = 'primary'; go.textContent = HOST ? 'Update now' : 'Download it';
+    go.addEventListener('click', () => { closeMenu(); showUpdateBar(); runUpdate(); });
+    box.append(b, p, go);
+    st.append(box);
+  } else st.textContent = aboutApp.version === 'dev' ? "Running code that hasn't been published, so it never updates itself."
+    : !aboutApp.updates ? "This copy doesn't update itself."
+    : updateState === 'checking' ? 'Checking for updates…'
+    : updateState === 'failed' ? "Couldn't check for updates. Are you online?"
+    : updateState === 'none' ? "You're up to date." : '';
+  st.hidden = !st.childNodes.length;
+  const log = $('#verLog');
+  log.replaceChildren(...changelog.map(e => {
+    const art = document.createElement('article'), h = document.createElement('h4'), p = document.createElement('p'), d = document.createElement('div');
+    d.className = 'ver-when';
+    d.textContent = versionDate(e.version) || e.version;
+    d.title = 'Version ' + e.version;
+    if (e.version === aboutApp.version) { const tag = document.createElement('em'); tag.textContent = 'Installed'; d.append(tag); }
+    h.textContent = e.summary;
+    p.textContent = e.notes || '';
+    art.append(d, h);
+    if (e.notes) art.append(p);
+    return art;
+  }));
+  log.previousElementSibling.hidden = !changelog.length;
 }
 // Newest published version, or null if this one is up to date (or there's no connection).
 async function newerVersion() {
-  if (HOST) { const r = await api('/api/update/check'); return r.available ? r.version : null; }
-  const r = await fetch(APP_UPDATE_URL + 'version.json?t=' + Date.now(), { cache: 'no-store' });
-  const v = (await r.json()).version;
-  return v > APP_VERSION ? v : null;
+  if (HOST) { const r = await api('/api/update/check'); return r.available ? r : null; }
+  const r = await (await fetch(APP_UPDATE_URL + 'version.json?t=' + Date.now(), { cache: 'no-store' })).json();
+  return r.version > APP_VERSION ? r : null;
 }
 async function checkUpdate(manual) {
+  updateState = 'checking'; showVersion();
   try {
-    const v = await newerVersion();
-    if (v) showUpdateBar(v);
-    else if (manual) toast("You're on the newest version");
-  } catch { if (manual) toast("Couldn't check for updates. Are you online?"); }
+    const r = await newerVersion();
+    updateInfo = r ? { version: r.version, summary: r.summary || '' } : null;
+    updateState = r ? '' : 'none';
+    if (r && !updateDismissed) showUpdateBar();
+  } catch { updateState = 'failed'; if (manual) toast("Couldn't check for updates. Are you online?"); }
+  showVersion();
 }
-function showUpdateBar(v) {
-  $('#updateText').textContent = 'A new version of Spider Diagram is ready.';
-  $('#updateText').title = 'Version ' + v;
+let updateDismissed = false;   // "Later": the button still says there's an update, but the notice stays away
+function showUpdateBar() {
+  $('#updateText').textContent = `Version ${updateInfo.version} is ready: ${updateInfo.summary || 'a new version of Spider Diagram.'}`;
   $('#updateGo').textContent = HOST ? 'Update now' : 'Download it';
   $('#updateGo').disabled = false;
+  $('#updateGo').hidden = false;
   $('#updateBar').hidden = false;
-  $('#updateBar').dataset.version = v;
 }
 async function runUpdate() {
-  const v = $('#updateBar').dataset.version, go = $('#updateGo');
+  const v = updateInfo.version, go = $('#updateGo');
   if (editing) finishEdit();
   flushNotes();
   if (!HOST) {   // the plain HTML copy can't replace itself: download the new one to use instead
@@ -4582,9 +4728,20 @@ async function runUpdate() {
   location.reload();
 }
 on('#updateGo', 'click', runUpdate);
-on('#updateLater', 'click', () => { $('#updateBar').hidden = true; });
+on('#updateLater', 'click', () => { $('#updateBar').hidden = true; updateDismissed = true; });
 on('#serverCopy', 'click', () => download(serialize(), slug() + '.spider'));
-on('#bCheckUpdate', 'click', () => { closeMenu(); checkUpdate(true); });   // (on the homepage's ⋯ menu)
+on('#verBtn', 'click', e => { toggleMenu(e.currentTarget); $('#verBtn').classList.remove('is-new'); });
+on('#verCheck', 'click', () => checkUpdate(true));
+// The button sits in the bottom-right corner: of the window on the homepage, or of the diagram (so it
+// stays clear of the notes panel) while editing.
+function placeVersion() {
+  const r = homeEl.hidden ? $('#stage').getBoundingClientRect() : { right: innerWidth, bottom: innerHeight };
+  $('#verWrap').style.right = Math.max(12, innerWidth - r.right + 12) + 'px';
+  $('#verWrap').style.bottom = Math.max(12, innerHeight - r.bottom + 12) + 'px';
+}
+new ResizeObserver(placeVersion).observe($('#stage'));
+new MutationObserver(placeVersion).observe(homeEl, { attributes: true, attributeFilter: ['hidden'] });
+addEventListener('resize', placeVersion);
 let installLater = false;   // "Not now": ask again next time the app starts
 function showInstallOffer() {
   let no = false; try { no = !!localStorage.getItem(INSTALL_STORE); } catch {}

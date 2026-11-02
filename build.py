@@ -149,7 +149,10 @@ def build(release=False):
     # What installed copies check: the newest version, and checksums so a broken download is never installed.
     if release:
         files = ('spider-diagram-linux', 'spider-diagram-windows.cmd', 'spider-diagram-chromeos.html')
-        (out / 'version.json').write_text(json.dumps({'version': version, 'sha256': {
+        # ...and what this version does, for the update notice (release.py has just added it to the changelog).
+        log = json.loads(app.split('<script id="changelog" type="application/json">', 1)[1].split('</script>', 1)[0])
+        entry = next((e for e in log if e['version'] == version), {})
+        (out / 'version.json').write_text(json.dumps({'version': version, 'summary': entry.get('summary', ''), 'sha256': {
             f: hashlib.sha256((out / f).read_bytes()).hexdigest() for f in files}}, indent=1) + '\n', encoding='utf-8')
     for f in sorted(out.iterdir()):
         print(f'{f.relative_to(HERE)}  {f.stat().st_size // 1024} KB')

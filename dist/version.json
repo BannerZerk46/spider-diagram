@@ -1,8 +1,9 @@
 {
- "version": "2026.11.02.1453",
+ "version": "2026.11.02.1517",
+ "summary": "A version menu in the corner shows what's new in each version and offers updates, and the shortcuts list is shorter.",
  "sha256": {
-  "spider-diagram-linux": "e7d586dfa547e90919834b141fc3613cb1bdba473a079dc3b72394853c4c6b39",
-  "spider-diagram-windows.cmd": "8f09edddb6321c1261902b9f853e8fa6fc51a2ae8e9e3ae1cc6c9c70bb6a6c3b",
-  "spider-diagram-chromeos.html": "4730ef1a3c73929004389ebb500ab6054a8c3945dba532fe4fec4fb2631c1b67"
+  "spider-diagram-linux": "c432db67f7950214c622706c219280482805a537d46ffc44003b500602e35ca4",
+  "spider-diagram-windows.cmd": "bd1a1a3266442a6cf66a9ad61352eaf13960583ed0592cf107e1889a53361ebc",
+  "spider-diagram-chromeos.html": "2d8a43a87e518b01324339b94376020f611765065bfac08f4d9d077378331044"
  }
 }
