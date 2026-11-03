@@ -1,9 +1,9 @@
 {
- "version": "2026.11.03.1139",
- "summary": "The home button now closes your diagram (asking to save first), and the app opens on your diagrams unless there's unsaved work.",
+ "version": "2026.11.03.1456",
+ "summary": "Tidying now fans each bubble's ideas out around it, so diagrams are much more compact and lines never run under other bubbles.",
  "sha256": {
-  "spider-diagram-linux": "dcb0f29fd01647b9cd865dade330f239336e55b9acdedee1115a55dce2141e93",
-  "spider-diagram-windows.cmd": "90c065c244a97f6f12a0341cb3014a7f9ef68f641f925d42da6ec6c77cb25fc7",
-  "spider-diagram-chromeos.html": "35bf62e8bdb0e1f1ade051914c9c0d9d565e4d1f24f2e12beb89b43a7188daba"
+  "spider-diagram-linux": "821dafd4275060b6f7f3bebf9448ca991335394ccec6b7759df8de24eda98482",
+  "spider-diagram-windows.cmd": "c3032520756b58f8977fd65dcfef0eda3c8a5148d2d24506d5ed4520e7307ab8",
+  "spider-diagram-chromeos.html": "c916ce2f2d5c397242d01798c1497096dcea13481ebbcc5e06f5f317cfdbff50"
  }
 }

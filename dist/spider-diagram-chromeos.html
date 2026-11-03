@@ -556,6 +556,11 @@
 <script id="changelog" type="application/json">
 [
  {
+  "version": "2026.11.03.1456",
+  "summary": "Tidying now fans each bubble's ideas out around it, so diagrams are much more compact and lines never run under other bubbles.",
+  "notes": "Each bubble's ideas spread out in a fan around that bubble instead of on a big circle around the main idea, so lines are far shorter and the empty space gets used. Branches move in as close as they fit, and separate main ideas pack close together while each keeps its own patch. Lines bend whichever way keeps them clear of other bubbles, and anything still in the way is nudged aside, so a line never runs under a bubble it doesn't join. Diagrams will look a little different the first time they're tidied, but everything stays in the same clockwise order."
+ },
+ {
   "version": "2026.11.03.1139",
   "summary": "The home button now closes your diagram (asking to save first), and the app opens on your diagrams unless there's unsaved work.",
   "notes": "The homepage is its own screen instead of a cover over the open diagram. Going home closes the diagram, and if it has unsaved changes you're asked whether to save them first. When you open the app, it starts on the homepage, unless the diagram you had open has unsaved changes, in which case it opens that so you can carry on."
@@ -1430,9 +1435,10 @@ function bowCurve(a, b, bow) {
 // (so it meets each bubble square on, and an arrowhead points straight into it), or straight, per the
 // diagram's line setting. If that runs behind another bubble, or along a link already placed (`taken`:
 // points along them), it tries the S the other way round, then arcs bowing further and further out.
-function sCurve(a, b, across) {
-  if (across) { const mx = (a.x + b.x) / 2; return [a, { x: mx, y: a.y }, { x: mx, y: b.y }, b]; }
-  const my = (a.y + b.y) / 2; return [a, { x: a.x, y: my }, { x: b.x, y: my }, b];
+// `at` is how far along it turns: halfway, or nearer one end to get past something.
+function sCurve(a, b, across, at = 0.5) {
+  if (across) { const mx = a.x + (b.x - a.x) * at; return [a, { x: mx, y: a.y }, { x: mx, y: b.y }, b]; }
+  const my = a.y + (b.y - a.y) * at; return [a, { x: a.x, y: my }, { x: b.x, y: my }, b];
 }
 function routeLink(p, n, others, taken = [], line = LINE_DEFAULTS.link) {
   const a = { x: p.x, y: p.y }, b = { x: n.x, y: n.y }, wide = Math.abs(b.x - a.x) >= Math.abs(b.y - a.y);
@@ -1487,23 +1493,88 @@ function aimArrows(P, p, n, line) {
 const LINE_DEFAULTS = { tree: { style: 'solid', arrow: 'none', width: 'normal' }, link: { style: 'dashed', arrow: 'none', width: 'normal' } };
 const WIDTH_FACTOR = { thin: 0.55, normal: 1, thick: 1.6 };
 const unit = (x, y) => { const l = Math.hypot(x, y) || 1; return { x: x / l, y: y / l }; };
+// A tree line from a to b as it's first tried: straight, or the S-curve along the main direction.
+function plainCurve(a, b) {
+  return doc.settings.lines === 'straight' ? [a, lerp(a, b, 1 / 3), lerp(a, b, 2 / 3), b] : sCurve(a, b, Math.abs(b.x - a.x) >= Math.abs(b.y - a.y));
+}
+// The tree line from bubble n's parent to n: straight, or an S-curve leaving and arriving along the main
+// direction. Like a link, if that S runs behind another bubble (one of `ns`), it tries the S the other
+// way round, then ones that turn nearer one end or the other: a bubble's ideas stacked up one side of
+// it get lines that climb past the nearer ones before turning in, rather than cutting through them.
+// Of the curves that are clear, it takes the first that doesn't cross any of `sisters` (lines already
+// drawn from the same bubble).
+function branchCurve(n, ns, sisters = []) {
+  const p = N(n.parent), a = { x: p.x, y: p.y }, b = { x: n.x, y: n.y };
+  if (doc.settings.lines === 'straight') return [a, lerp(a, b, 1 / 3), lerp(a, b, 2 / 3), b];
+  const wide = Math.abs(b.x - a.x) >= Math.abs(b.y - a.y), first = sCurve(a, b, wide);
+  let clear = null;
+  for (const [across, at] of [[wide, 0.5], [!wide, 0.5], [wide, 0.8], [wide, 0.2], [!wide, 0.8], [!wide, 0.2]]) {
+    const P = across === wide && at === 0.5 ? first : sCurve(a, b, across, at);
+    if (behind(P, ns, p, n)) continue;
+    if (!sisters.some(Q => tangled(P, Q, p))) return P;
+    clear ??= P;
+  }
+  return clear || first;
+}
+// Every tree line among bubbles ns, by bubble id. A bubble's nearer ideas get their lines first, so the
+// further ones fit round them.
+function branchCurves(ns) {
+  const out = new Map(), byParent = new Map();
+  for (const n of ns) if (!isRoot(n)) byParent.set(n.parent, [...byParent.get(n.parent) || [], n]);
+  for (const [pid, ks] of byParent) {
+    const p = N(pid), drawn = [];
+    ks.sort((a, b) => Math.hypot(a.x - p.x, a.y - p.y) - Math.hypot(b.x - p.x, b.y - p.y));
+    for (const n of ks) { const P = branchCurve(n, ns, drawn); out.set(n.id, P); drawn.push(P); }
+  }
+  return out;
+}
+// Do two lines from bubble p cross, once clear of p? (They all start together underneath it.)
+function tangled(P, Q, p) {
+  const g = geom[p.id], w = g.w / 2 + 20, h = g.h / 2 + 20;
+  const pts = K => { const out = []; for (let i = 0; i <= 24; i++) { const q = bezAt(K, i / 24); if (Math.abs(q.x - p.x) > w || Math.abs(q.y - p.y) > h) out.push(q); } return out; };
+  const A = pts(P), B = pts(Q), ccw = (a, b, c) => (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
+  for (let i = 1; i < A.length; i++) for (let j = 1; j < B.length; j++) {
+    const a = A[i - 1], b = A[i], c = B[j - 1], d = B[j];
+    if (ccw(a, b, c) * ccw(a, b, d) < 0 && ccw(c, d, a) * ccw(c, d, b) < 0) return true;
+  }
+  return false;
+}
+// Does curve P (from bubble p to bubble n) run behind any other bubble of ns?
+function behind(P, ns, p, n) {
+  const x0 = Math.min(P[0].x, P[3].x), x1 = Math.max(P[0].x, P[3].x), y0 = Math.min(P[0].y, P[3].y), y1 = Math.max(P[0].y, P[3].y);
+  let pts = null;
+  for (const o of ns) {
+    const g = geom[o.id];
+    if (o === p || o === n || !g) continue;
+    const w = g.w / 2 + 6, h = g.h / 2 + 6;
+    if (o.x + w < x0 || o.x - w > x1 || o.y + h < y0 || o.y - h > y1) continue;
+    pts ??= Array.from({ length: 33 }, (_, i) => bezAt(P, i / 32));
+    for (let i = 0; i < 32; i++) if (segInBox(pts[i], pts[i + 1], o.x - w, o.x + w, o.y - h, o.y + h)) return true;
+  }
+  return false;
+}
+// Does the straight stretch from a to c pass through the box x0..x1, y0..y1? (Clipped to each side in turn.)
+function segInBox(a, c, x0, x1, y0, y1) {
+  const dx = c.x - a.x, dy = c.y - a.y;
+  let t0 = 0, t1 = 1;
+  for (const [p, q] of [[-dx, a.x - x0], [dx, x1 - a.x], [-dy, a.y - y0], [dy, y1 - a.y]]) {
+    if (p === 0) { if (q < 0) return false; continue; }
+    const r = q / p;
+    if (p < 0) t0 = Math.max(t0, r); else t1 = Math.min(t1, r);
+  }
+  return t0 <= t1;
+}
 // One line from bubble p to bubble n, as SVG markup: a tree line (S-curve or straight, per the diagram
 // setting), or with `link` set, a link (straight, or an arc routed around other bubbles). Either is planned
 // centre to centre, so it always heads straight into each bubble, then trimmed where it meets each
 // outline (plain tree lines aren't trimmed: their ends are hidden under the bubbles anyway).
-// A tree line from a to b: straight, or an S-curve leaving and arriving along the main direction.
-function treeCurve(a, b) {
-  if (doc.settings.lines === 'straight') return [a, lerp(a, b, 1 / 3), lerp(a, b, 2 / 3), b];
-  if (Math.abs(b.x - a.x) >= Math.abs(b.y - a.y)) { const mx = (a.x + b.x) / 2; return [a, { x: mx, y: a.y }, { x: mx, y: b.y }, b]; }
-  const my = (a.y + b.y) / 2; return [a, { x: a.x, y: my }, { x: b.x, y: my }, b];
-}
 function drawLine(p, n, line, color, base, opts) {
   const { link = false, curve = null, others = [], ui = false, hit = '', selected = false, selColor } = opts;
   const w = base * WIDTH_FACTOR[line.width], atEnd = line.arrow === 'end' || line.arrow === 'both', atStart = line.arrow === 'start' || line.arrow === 'both';
   const a = { x: p.x, y: p.y }, b = { x: n.x, y: n.y };
   let P;
   if (link) P = curve || routeLink(p, n, others, [], line);
-  else P = treeCurve(a, b);
+  else P = curve || branchCurve(n, []);
   const trimA = link || atStart || geom[p.id]?.shape === 'text', trimB = link || atEnd || geom[n.id]?.shape === 'text', gap = link ? 3 : 2;
   const t0 = trimA ? crossing(P, q => outlineDist(p, q.x, q.y) - gap, 0, 1) : 0;
   const t1 = trimB ? crossing(P, q => outlineDist(n, q.x, q.y) - gap, 1, 0) : 1;
@@ -1582,12 +1653,13 @@ function scene(ui, theme = appTheme) {
     return `url(#${grads[key]})`;
   };
   let edges = '', body = '';
+  const branches = branchCurves(ns);
   for (const n of ns) {
     if (isRoot(n)) continue;
     const d = geom[n.id].d;
     const fadeLine = focusTag && !tagsOf(n).includes(focusTag) && !tagsOf(N(n.parent)).includes(focusTag);   // highlighting a tag
     edges += (fadeLine ? '<g opacity=".18">' : '') + drawLine(N(n.parent), n, { ...LINE_DEFAULTS.tree, ...n.line }, paint(n), d === 1 ? 6 : d === 2 ? 3.5 : 2,
-      { ui, hit: `data-edge="${n.id}"` }) + (fadeLine ? '</g>' : '');
+      { curve: branches.get(n.id), ui, hit: `data-edge="${n.id}"` }) + (fadeLine ? '</g>' : '');
   }
   const taken = [];
   linkCurves = []; linkLabels = {};
@@ -1643,12 +1715,7 @@ function scene(ui, theme = appTheme) {
     jobs.push({ l, curve, lc, dim });
   }
   // Tree lines count as ink too (as drawn: straight, or the S-curve).
-  for (const n of ns) {
-    if (isRoot(n)) continue;
-    const p = N(n.parent), a = { x: p.x, y: p.y }, b = { x: n.x, y: n.y };
-    const P = treeCurve(a, b);
-    for (let i = 0; i <= 30; i++) ink.push({ ...bezAt(P, i / 30), link: null });
-  }
+  for (const P of branches.values()) for (let i = 0; i <= 30; i++) ink.push({ ...bezAt(P, i / 30), link: null });
   for (const { l, curve, lc, dim } of jobs) {
     // The label sits on its link, on a little tag that hides the line behind its text.
     if (l.label && !(ui && labelEdit === l.id)) {
@@ -1916,9 +1983,9 @@ function reparent(id, target) {
   for (const i of ids) { N(i).x += dx; N(i).y += dy; }
 }
 
-// Radial layout: each branch gets a wedge of the circle proportional to its leaves (wide bubbles count
-// for more). Each bubble sits just far enough out to clear its parent in the direction it points, and
-// far enough that its wedge is wide enough to hold it; any remaining overlaps are then pushed apart.
+// Tidy layout: a main idea's branches go round it, and further out each bubble's ideas fan out round
+// that bubble, facing away from it, so every line stays short and clear of the other bubbles. The
+// branches then move in as close as they fit, and so do the main ideas (see layout).
 function tidy() {
   seen('tidy');
   commit();
@@ -1930,7 +1997,6 @@ function layout(pullFree = false) {
   countKids();
   for (const n of visible()) geom[n.id] = measure(n);
   const memo = {};
-  let root;
   // A collapsed branch is laid out as a single bubble; its hidden ideas move along with it afterwards.
   const folded = visible().filter(n => n.collapsed).map(n => [n.id, n.x, n.y]);
   const order = id => N(id).collapsed ? [] : ordered(id);
@@ -1939,36 +2005,302 @@ function layout(pullFree = false) {
   // Half-size of a bubble measured along direction m, and its full size across that direction.
   const along = (g, m) => Math.abs(Math.cos(m)) * g.w / 2 + Math.abs(Math.sin(m)) * g.h / 2;
   const across = (g, m) => Math.abs(Math.sin(m)) * g.w + Math.abs(Math.cos(m)) * g.h + 24;
-  const FAN = Math.PI * 0.8;
-  function place(id, a0, a1, rp) {
-    // A branch fans out in front of its bubble, never round the sides and back behind the main idea
-    // (which happened when a main idea had only one or two branches, so each got half the circle or more).
-    if (!isRoot(N(id)) && a1 - a0 > FAN) { const mid = (a0 + a1) / 2; a0 = mid - FAN / 2; a1 = mid + FAN / 2; }
-    const ks = order(id), tot = ks.reduce((s, k) => s + weight(k.id), 0), gp = geom[id];
-    let a = a0;
+  // The main idea's branches share the circle round it, each a slice in proportion to its size.
+  function place(top) {
+    const ks = order(top.id), tot = ks.reduce((s, k) => s + weight(k.id), 0), gp = geom[top.id];
+    let a = -Math.PI / 2 - Math.PI * weight(ks[0].id) / tot;   // the first branch straight up
     for (const k of ks) {
-      const span = (a1 - a0) * weight(k.id) / tot, m = a + span / 2, g = geom[k.id];
-      let r = rp + along(gp, m) + along(g, m) + (isRoot(N(id)) ? 80 : 55);
-      r = Math.max(r, across(g, m) / (2 * Math.sin(Math.min(span, Math.PI) / 2)));
-      k.x = root.x + r * Math.cos(m); k.y = root.y + r * Math.sin(m);
-      place(k.id, a, a + span, r);
+      const span = 2 * Math.PI * weight(k.id) / tot, m = a + span / 2, g = geom[k.id];
+      const r = Math.max(along(gp, m) + along(g, m) + 80, across(g, m) / (2 * Math.sin(Math.min(span, Math.PI) / 2)));
+      k.x = top.x + r * Math.cos(m); k.y = top.y + r * Math.sin(m);
+      fan(k.id, m);
       a += span;
     }
   }
-  for (const top of all().filter(isRoot)) {   // every main idea and free bubble lays out its own tree
-    root = top;
-    const ks = order(top.id);
-    if (!ks.length) continue;
-    const first = 2 * Math.PI * weight(ks[0].id) / ks.reduce((t, k) => t + weight(k.id), 0);
-    place(top.id, -Math.PI / 2 - first / 2, 1.5 * Math.PI - first / 2, 0);
+  // Further out, a bubble's ideas fan out round it, facing away from where its own line comes in (dir),
+  // clockwise in order, at most 140° wide.
+  const FAN = Math.PI * 140 / 180, STEP = Math.PI / 180;
+  const crowd = (a, ga, b, gb) => Math.abs(a.x - b.x) < (ga.w + gb.w) / 2 + 24 && Math.abs(a.y - b.y) < (ga.h + gb.h) / 2 + 18;
+  const linePts = (a, b) => { const P = plainCurve(a, b), out = []; for (let t = 1; t < 12; t++) out.push(bezAt(P, t / 12)); return out; };
+  const under = (q, n, g) => Math.abs(q.x - n.x) < g.w / 2 + 8 && Math.abs(q.y - n.y) < g.h / 2 + 8;
+  function fan(id, dir) {
+    const ks = order(id), n = N(id), gp = geom[id];
+    if (!ks.length) return;
+    const clear = (g, m) => along(gp, m) + along(g, m) + 45;   // close as it can get without touching
+    // First a rough fan of just the ideas themselves, to aim each one: each as close round as it fits
+    // beside the one before, then spread out evenly (about 35° apart), further out if they don't fit.
+    let dist = 0, ms = [];
+    for (let tries = 0; tries < 40; tries++) {
+      ms = [0];
+      let prev = null;
+      for (let i = 0; i < ks.length; i++) {
+        const g = geom[ks[i].id];
+        let m = i ? ms[i - 1] : 0;
+        const at = m => { const r = Math.max(dist, clear(g, dir + m)); return { x: r * Math.cos(dir + m), y: r * Math.sin(dir + m) }; };
+        if (i) while (m - ms[i - 1] < Math.PI && crowd(prev, geom[ks[i - 1].id], at(m), g)) m += STEP;
+        ms[i] = m; prev = at(m);
+      }
+      if (ms[ms.length - 1] <= FAN) break;
+      dist = Math.max(dist, ...ks.map(k => clear(geom[k.id], dir))) * 1.12;
+    }
+    const used = ms[ms.length - 1], want = Math.min(FAN, Math.max(used, (ks.length - 1) * 35 * STEP));
+    const extra = ks.length > 1 ? (want - used) / (ks.length - 1) : 0;
+    // Lay out each idea's own branch, aimed that way, and keep its shape (bubbles and lines, from the idea).
+    const shapes = ks.map((k, i) => {
+      const m = dir + ms[i] + extra * i - want / 2, r = Math.max(dist, clear(geom[k.id], m));
+      k.x = n.x + r * Math.cos(m); k.y = n.y + r * Math.sin(m);
+      fan(k.id, m);
+      const ids = subtree(k.id).filter(i => !hidden.has(i));
+      const pts = ids.slice(1).flatMap(i => linePts(N(N(i).parent), N(i))).map(q => [q.x - k.x, q.y - k.y]);
+      return { m, ids, rel: ids.map(i => [N(i).x - k.x, N(i).y - k.y]), pts };
+    });
+    // Then place the whole branches round the bubble in order, each at the first angle (at least `sep`
+    // past the one before) where its bubbles and lines are clear of those already placed and of the
+    // line coming in. A branch swung away from its aim turns with it, so it still points outwards.
+    const pack = (start, sep) => {
+      const boxes = [[n, gp]], pts = [], spots = [];
+      if (n.parent != null) { boxes.push([N(n.parent), geom[n.parent]]); pts.push(...linePts(N(n.parent), n)); }
+      let a = start;
+      ks.forEach((k, i) => {
+        const S = shapes[i];
+        if (i) a = spots[i - 1].a + sep;
+        let spot;
+        for (let tries = 0; tries < 120; tries++, a += 2 * STEP) {
+          const r = Math.max(dist, clear(geom[k.id], a)), x = n.x + r * Math.cos(a), y = n.y + r * Math.sin(a);
+          const c = Math.cos(a - S.m), sn = Math.sin(a - S.m), turn = ([dx, dy]) => ({ x: x + dx * c - dy * sn, y: y + dx * sn + dy * c });
+          const at = S.rel.map(turn), first = linePts(n, at[0]), inner = S.pts.map(turn);
+          spot = { a, at, mine: [...first, ...inner] };
+          const ok = S.ids.every((id, j) => boxes.every(([o, g]) => !crowd(at[j], geom[id], o, g)) && !pts.some(q => under(q, at[j], geom[id])))
+            && !first.some(q => boxes.some(([o, g], b) => b && under(q, o, g)))   // (it starts under n)
+            && !inner.some(q => boxes.some(([o, g]) => under(q, o, g)));
+          if (ok) break;
+        }
+        spots.push(spot);
+        S.ids.forEach((id, j) => boxes.push([spot.at[j], geom[id]]));
+        pts.push(...spot.mine);
+      });
+      return spots;
+    };
+    const span = spots => spots[spots.length - 1].a - spots[0].a;
+    // Packed as close as they go: if that's wider than the widest fan, further out.
+    let spots = pack(dir - want / 2, 0);
+    for (let tries = 0; tries < 10 && span(spots) > FAN; tries++) {
+      dist = Math.max(dist, ...ks.map(k => clear(geom[k.id], dir))) * 1.15;
+      spots = pack(dir - want / 2, 0);
+    }
+    // Then as comfortably spaced as the fan has room for (up to 35° apart), centred on dir.
+    const room = Math.max(span(spots), want);
+    let sep = 0;
+    for (const d of [35, 26, 18, 10]) { const t = pack(dir - want / 2, d * STEP); if (span(t) <= room + 1e-6) { sep = d * STEP; spots = t; break; } }
+    spots = pack(dir - span(spots) / 2, sep);
+    spots.forEach((spot, i) => shapes[i].ids.forEach((id, j) => { N(id).x = spot.at[j].x; N(id).y = spot.at[j].y; }));
   }
+  for (const top of all().filter(isRoot)) if (order(top.id).length) place(top);   // every main idea and free bubble lays out its own tree
+  spread();
+  for (const top of all().filter(isRoot)) { makeRoom(top, order(top.id)); pullIn(top, order(top.id)); }
   packMains();
+  const ms = mains();
+  if (ms.length > 1) gather(ms[0], ms.slice(1).map(m => ({ k: m, ids: subtree(m.id).filter(id => !hidden.has(id)) })), visible(), false, 60, true);
   if (pullFree) relaxFree();
   resolveOverlaps();
-  for (let k = 0; k < 6 && clearLines(); k++) resolveOverlaps();
+  untangle();
   for (const [id, x0, y0] of folded) {
     const dx = N(id).x - x0, dy = N(id).y - y0;
     for (const i of subtree(id).slice(1)) { N(i).x += dx; N(i).y += dy; }
+  }
+}
+// Where two bubbles of a tree crowd each other, or a line runs through a bubble, swing their branches
+// apart round the bubble they both grow from: the two branches leaving it that hold them turn away from
+// each other, so a bubble's ideas make room for everything hanging off them. A fan only opens so far
+// (to 100° either side of straight out); past that, the outer branch moves further out instead.
+function spread() {
+  const ns = visible(), up = new Map(ns.map(n => { const c = []; for (let x = n.id; x != null; x = N(x).parent) c.push(x); return [n.id, c]; }));
+  const LIMIT = Math.PI * 100 / 180, wrap = a => Math.atan2(Math.sin(a), Math.cos(a));
+  const turn = (id, L, by) => {
+    const c = Math.cos(by), s = Math.sin(by);
+    for (const i of subtree(id)) if (!hidden.has(i)) { const n = N(i), x = n.x - L.x, y = n.y - L.y; n.x = L.x + x * c - y * s; n.y = L.y + x * s + y * c; }
+  };
+  const push = (id, L, by) => {
+    const n = N(id), d = Math.hypot(n.x - L.x, n.y - L.y) || 1, dx = (n.x - L.x) / d * by, dy = (n.y - L.y) / d * by;
+    for (const i of subtree(id)) if (!hidden.has(i)) { N(i).x += dx; N(i).y += dy; }
+  };
+  // Move bubbles a and b (or a line ending at a, and bubble b) `need` further apart, by swinging the
+  // branches holding them away from each other round the bubble they both grow from, and (for two
+  // bubbles) pushing the outer one further out if the fan is already as wide as it goes. Returns whether
+  // anything moved (not if they're in different trees, one sits under the other, or they meet only at
+  // a main idea: makeRoom and pullIn look after those).
+  const part = (a, b, need, pushOut = true) => {
+    const ca = up.get(a.id), cb = up.get(b.id), ia = ca.findIndex(id => cb.includes(id));
+    if (ia <= 0 || cb.indexOf(ca[ia]) === 0 || isRoot(N(ca[ia]))) return false;
+    const L = N(ca[ia]), A = N(ca[ia - 1]), B = N(cb[cb.indexOf(ca[ia]) - 1]);
+    const side = Math.sign(wrap(Math.atan2(B.y - L.y, B.x - L.x) - Math.atan2(A.y - L.y, A.x - L.x))) || 1;
+    const ra = Math.hypot(a.x - L.x, a.y - L.y), rb = Math.hypot(b.x - L.x, b.y - L.y);
+    const out = Math.atan2(L.y - N(L.parent).y, L.x - N(L.parent).x);   // keep within the fan
+    const fit = (K, d) => { const now = wrap(Math.atan2(K.y - L.y, K.x - L.x) - out), to = Math.max(-LIMIT, Math.min(LIMIT, now + d)); return to - now; };
+    const da = fit(A, -side * need / (ra + rb)), db = fit(B, side * need / (ra + rb));
+    const left = need - Math.abs(da) * ra - Math.abs(db) * rb;
+    turn(A.id, L, da); turn(B.id, L, db);
+    if (pushOut && left > 1) push(ra > rb ? A.id : B.id, L, left);
+    return pushOut && left > 1 || Math.abs(da) * ra + Math.abs(db) * rb > 0.5;
+  };
+  // Crowding bubbles part completely; then a line running through a bubble (as it would be drawn)
+  // parts them too, a little at a time, settling the crowding again after each round. (Pushing the far
+  // one out wouldn't help a line: it still has to reach it. In a fan that's already full, parting a
+  // line just crowds the next bubble along, so that gets a few rounds only, and untangle has the rest.)
+  const crowding = () => {
+    for (let it = 0; it < 100; it++) {
+      let moved = false;
+      for (let i = 0; i < ns.length; i++) for (let j = i + 1; j < ns.length; j++) {
+        const a = ns[i], b = ns[j], ga = geom[a.id], gb = geom[b.id];
+        const ox = (ga.w + gb.w) / 2 + 24 - Math.abs(a.x - b.x), oy = (ga.h + gb.h) / 2 + 18 - Math.abs(a.y - b.y);
+        if (ox > 0 && oy > 0 && part(a, b, Math.min(ox, oy) + 2)) moved = true;
+      }
+      if (!moved) return;
+    }
+  };
+  const lines = () => {
+    let moved = false;
+    for (const n of ns) {
+      if (isRoot(n) || isRoot(N(n.parent))) continue;
+      const p = N(n.parent), x0 = Math.min(p.x, n.x), x1 = Math.max(p.x, n.x), y0 = Math.min(p.y, n.y), y1 = Math.max(p.y, n.y);
+      const near = ns.filter(o => { const g = geom[o.id]; return o !== n && o !== p && o.x + g.w / 2 + 8 > x0 && o.x - g.w / 2 - 8 < x1 && o.y + g.h / 2 + 8 > y0 && o.y - g.h / 2 - 8 < y1; });
+      if (!near.length) continue;   // nothing for it to run through
+      const P = branchCurve(n, near), pts = Array.from({ length: 25 }, (_, i) => bezAt(P, i / 24));
+      for (const o of near) {
+        const g = geom[o.id];
+        let hit = false;
+        for (let i = 0; i < 24 && !hit; i++) hit = segInBox(pts[i], pts[i + 1], o.x - g.w / 2 - 8, o.x + g.w / 2 + 8, o.y - g.h / 2 - 8, o.y + g.h / 2 + 8);
+        if (hit && part(n, o, 20, false)) moved = true;
+      }
+    }
+    return moved;
+  };
+  crowding();
+  for (let round = 0; round < 8 && lines(); round++) crowding();
+}
+// A main idea's branches each cover an angle round it (everything hanging off them, seen from the main
+// idea). Where two neighbours' angles overlap, the one covering more moves further out (which narrows
+// its angle) until they don't, so no branch runs into the next however big they grow.
+function makeRoom(top, ks) {
+  if (ks.length < 2) return;
+  const wrap = a => Math.atan2(Math.sin(a), Math.cos(a));
+  const info = ks.map(k => {
+    const ids = subtree(k.id).filter(id => !hidden.has(id));
+    const span = () => {
+      const m = Math.atan2(k.y - top.y, k.x - top.x);
+      let lo = 0, hi = 0;
+      for (const id of ids) {
+        const n = N(id), g = geom[id];
+        for (const [sx, sy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+          const d = wrap(Math.atan2(n.y + sy * (g.h / 2 + 10) - top.y, n.x + sx * (g.w / 2 + 14) - top.x) - m);
+          lo = Math.min(lo, d); hi = Math.max(hi, d);
+        }
+      }
+      return { m, lo, hi };
+    };
+    return { k, ids, span, ...span() };
+  });
+  for (let it = 0; it < 300; it++) {
+    let moved = false;
+    for (let i = 0; i < info.length; i++) {
+      const A = info[i], B = info[(i + 1) % info.length];
+      const room = (wrap(B.m - A.m) + 2 * Math.PI) % (2 * Math.PI);
+      if (A.hi - B.lo <= room) continue;
+      const W = A.hi - A.lo >= B.hi - B.lo ? A : B, r = Math.hypot(W.k.x - top.x, W.k.y - top.y), by = Math.max(10, r * 0.06);
+      for (const id of W.ids) { N(id).x += Math.cos(W.m) * by; N(id).y += Math.sin(W.m) * by; }
+      Object.assign(W, W.span());
+      moved = true;
+    }
+    if (!moved) break;
+  }
+}
+// makeRoom keeps neighbouring branches' angles apart, but most of the space between two angles is
+// empty: so then each branch, furthest out first, moves back in towards its main idea (see gather).
+function pullIn(top, ks) {
+  if (ks.length < 2) return;
+  const ids = new Set(subtree(top.id).filter(id => !hidden.has(id)));
+  gather(top, ks.map(k => ({ k, ids: subtree(k.id).filter(id => !hidden.has(id)) })), visible().filter(n => ids.has(n.id) && n !== top), true);
+}
+// Move each group of bubbles (a main idea's branch, or a whole main idea with its tree) in towards
+// `centre` as far as it goes without crowding any of `ns` or running a line through them (or having
+// one of theirs run through it), swinging round if that lets it come in closer: as little as it can,
+// and staying between its neighbours, so their order round the centre stays the same. `joined`: a
+// line runs from the centre to each group's first bubble (k), which must stay clear too. Furthest out
+// first, a few times over, as each one coming in can make room for another. GAP: the room kept round
+// each group's bubbles. `solid`: groups are whole trees, each kept to its own patch (the box round all
+// of it), so two main ideas' bubbles never mingle.
+function gather(centre, groups, ns, joined, GAP = 30, solid = false) {
+  if (groups.length < 2 && !joined) return;
+  const ang = g => Math.atan2(g.k.y - centre.y, g.k.x - centre.x), dist = g => Math.hypot(g.k.x - centre.x, g.k.y - centre.y);
+  const wrap = a => Math.atan2(Math.sin(a), Math.cos(a)), gc = geom[centre.id];
+  for (let pass = 0; pass < 3; pass++) {
+    const round = [...groups].sort((a, b) => ang(a) - ang(b)), curves = branchCurves(visible()), shifted = new Map();
+    // The lines as they're drawn (a group already moved took its lines with it; a line from the centre
+    // that has changed shape is as first tried), each as a chain of points with the box round it.
+    const lineOf = n => {
+      const p = N(n.parent), sh = shifted.get(n.id), pts = [];
+      const P = p === centre && sh ? plainCurve(p, n) : curves.get(n.id);
+      for (let t = 0; t <= 24; t++) { const q = bezAt(P, t / 24); pts.push(sh && p !== centre ? { x: q.x + sh.x, y: q.y + sh.y } : q); }
+      const xs = pts.map(q => q.x), ys = pts.map(q => q.y);
+      return { pts, x0: Math.min(...xs), x1: Math.max(...xs), y0: Math.min(...ys), y1: Math.max(...ys) };
+    };
+    // Does line l, shifted by (dx, dy), run through bubble o (with a little room)?
+    const through = (l, o, dx = 0, dy = 0) => {
+      const g = geom[o.id], x0 = o.x - dx - g.w / 2 - 10, x1 = o.x - dx + g.w / 2 + 10, y0 = o.y - dy - g.h / 2 - 10, y1 = o.y - dy + g.h / 2 + 10;
+      if (l.x1 < x0 || l.x0 > x1 || l.y1 < y0 || l.y0 > y1) return false;
+      for (let i = 0; i < l.pts.length - 1; i++) if (segInBox(l.pts[i], l.pts[i + 1], x0, x1, y0, y1)) return true;
+      return false;
+    };
+    for (const G of [...groups].sort((a, b) => dist(b) - dist(a))) {
+      const { k, ids } = G, mine = new Set(ids), others = ns.filter(n => !mine.has(n.id) && (n !== centre || !joined));
+      let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+      for (const id of ids) { const n = N(id), g = geom[id]; x0 = Math.min(x0, n.x - g.w / 2); x1 = Math.max(x1, n.x + g.w / 2); y0 = Math.min(y0, n.y - g.h / 2); y1 = Math.max(y1, n.y + g.h / 2); }
+      const top = id => { let x = N(id); while (x.parent != null) x = N(x.parent); return x.id; }, blocks = new Map();
+      if (solid) for (const o of others) {
+        const t = top(o.id), g = geom[o.id], b = blocks.get(t) || { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity };
+        blocks.set(t, { x0: Math.min(b.x0, o.x - g.w / 2), x1: Math.max(b.x1, o.x + g.w / 2), y0: Math.min(b.y0, o.y - g.h / 2), y1: Math.max(b.y1, o.y + g.h / 2) });
+      }
+      const myLines = solid ? [] : ids.filter(id => N(id).parent != null && mine.has(N(id).parent)).map(id => lineOf(N(id)));
+      const theirLines = solid ? [] : others.filter(n => n.parent != null).map(lineOf);
+      // Would the group, moved by (dx, dy), crowd anything or have a line run through it (or run its own
+      // lines through anything)?
+      const fits = (dx, dy) => {
+        const bx0 = x0 + dx - GAP, bx1 = x1 + dx + GAP, by0 = y0 + dy - GAP, by1 = y1 + dy + GAP, near = [];
+        if (solid) { for (const b of blocks.values()) if (b.x1 > bx0 && b.x0 < bx1 && b.y1 > by0 && b.y0 < by1) return false; return true; }
+        for (const o of others) {
+          const go = geom[o.id];
+          if (o.x + go.w / 2 < bx0 || o.x - go.w / 2 > bx1 || o.y + go.h / 2 < by0 || o.y - go.h / 2 > by1) continue;
+          for (const id of ids) { const n = N(id), gn = geom[id]; if (Math.abs(n.x + dx - o.x) < (gn.w + go.w) / 2 + GAP && Math.abs(n.y + dy - o.y) < (gn.h + go.h) / 2 + GAP) return false; }
+          near.push(o);
+        }
+        for (const l of myLines) for (const o of near) if (through(l, o, dx, dy)) return false;
+        for (const l of theirLines) if (l.x1 > bx0 && l.x0 < bx1 && l.y1 > by0 && l.y0 < by1) for (const id of ids) if (through(l, N(id), -dx, -dy)) return false;
+        if (!joined) return true;
+        const a = { x: centre.x, y: centre.y }, b = { x: k.x + dx, y: k.y + dy }, P = plainCurve(a, b), pts = [];
+        for (let t = 0; t <= 24; t++) pts.push(bezAt(P, t / 24));
+        const line = { pts, x0: Math.min(a.x, b.x), x1: Math.max(a.x, b.x), y0: Math.min(a.y, b.y), y1: Math.max(a.y, b.y) };
+        return !others.some(o => through(line, o));
+      };
+      const i = round.indexOf(G), m0 = ang(G), r0 = dist(G), g = geom[k.id];
+      const lo = round.length > 1 ? wrap(ang(round[(i + round.length - 1) % round.length]) - m0) : -Math.PI;   // the neighbours' angles, either side
+      const hi = round.length > 1 ? wrap(ang(round[(i + 1) % round.length]) - m0) : Math.PI;
+      let best = null;
+      for (let d = 0; d <= 90; d = d > 0 ? -d : 6 - d) {   // 0, 6, -6, 12, -12…
+        const da = d * Math.PI / 180;
+        if (da <= lo + 0.15 && lo < 0 || da >= hi - 0.15 && hi > 0) continue;
+        const m = m0 + da, rMin = Math.abs(Math.cos(m)) * (gc.w + g.w) / 2 + Math.abs(Math.sin(m)) * (gc.h + g.h) / 2 + 80;
+        const cost = Math.abs(d) * 4;   // swinging round has to bring it in by 4 for each degree
+        const at = r => ({ r: r + cost, dx: centre.x + r * Math.cos(m) - k.x, dy: centre.y + r * Math.sin(m) - k.y });
+        for (let r = rMin; r + cost < (best ? best.r : r0) - 1; r += 60) {   // in big steps, then back in smaller ones
+          if (!fits(at(r).dx, at(r).dy)) continue;
+          best = at(r);
+          for (const back of [20, 40]) if (r - back >= rMin && fits(at(r - back).dx, at(r - back).dy)) best = at(r - back);
+          break;
+        }
+      }
+      if (best) for (const id of ids) { N(id).x += best.dx; N(id).y += best.dy; shifted.set(id, { x: best.dx, y: best.dy }); }
+    }
+    if (!shifted.size) return;
   }
 }
 // Arrange the main ideas like coins pushed together on a table: each one as close to the first as it
@@ -2141,37 +2473,134 @@ function setAllCollapsed(fold) {
   if (doc.settings.autoTidy) layout();
   render(); fit();
 }
-// Nudge overlapping bubbles apart along whichever axis needs the smaller move; the centre never moves.
-// Nudge any bubble that sits on another bubble's branch line off it (a far-out bubble's line can swing
-// past a neighbour that sits closer in), moving what hangs off it too. Returns whether anything moved.
-function clearLines(margin = 12) {
-  const ns = visible(), lines = ns.filter(n => !isRoot(n)).map(n => {
-    const p = N(n.parent), P = treeCurve({ x: p.x, y: p.y }, { x: n.x, y: n.y });
-    const pts = Array.from({ length: 33 }, (_, i) => bezAt(P, i / 32));
+// Keep every branch line clear of the bubbles it doesn't join. Where a line runs under a bubble, try
+// moving either one (the bubble in the way, or the bubble the line leads to, each with whatever hangs
+// off it): swung round its parent, pushed further out, or slid a little in any direction. Keep the move
+// that clears the most without crowding other bubbles, adding crossings or changing the clockwise
+// order of a bubble's branches.
+function untangle(rounds = 8) {
+  const ns = visible(), PAD = 10, GAP = 18;
+  const lineOf = n => {
+    const P = branchCurve(n, ns), pts = [];
+    for (let i = 0; i <= 24; i++) pts.push(bezAt(P, i / 24));
     const xs = pts.map(q => q.x), ys = pts.map(q => q.y);
-    return { n, p, pts, x0: Math.min(...xs), x1: Math.max(...xs), y0: Math.min(...ys), y1: Math.max(...ys) };
-  });
-  let moved = false;
-  for (const o of ns) {
-    if (isRoot(o)) continue;
-    const g = geom[o.id], w = g.w / 2 + margin, hh = g.h / 2 + margin, mine = new Set(subtree(o.id));
-    for (const l of lines) {
-      if (l.n === o || l.p === o || mine.has(l.n.id)) continue;   // its own lines, and lines that would move with it
-      if (o.x + w < l.x0 || o.x - w > l.x1 || o.y + hh < l.y0 || o.y - hh > l.y1) continue;
-      let mx = 0, my = 0;
-      for (const q of l.pts) {
-        const ox = w - Math.abs(q.x - o.x), oy = hh - Math.abs(q.y - o.y);
-        if (ox <= 0 || oy <= 0) continue;
-        if (ox < oy) { const v = (o.x < q.x ? -1 : 1) * (ox + 1); if (Math.abs(v) > Math.abs(mx)) mx = v; }
-        else { const v = (o.y < q.y ? -1 : 1) * (oy + 1); if (Math.abs(v) > Math.abs(my)) my = v; }
+    return { n, p: n.parent, pts, x0: Math.min(...xs), x1: Math.max(...xs), y0: Math.min(...ys), y1: Math.max(...ys) };
+  };
+  let lines;
+  // Does line l, shifted by (ox, oy), pass through bubble b (with a little clearance)? Each stretch of
+  // the line is clipped to the bubble's box.
+  const hits = (l, b, ox = 0, oy = 0) => {
+    const g = geom[b.id], x0 = b.x - ox - g.w / 2 - PAD, x1 = b.x - ox + g.w / 2 + PAD, y0 = b.y - oy - g.h / 2 - PAD, y1 = b.y - oy + g.h / 2 + PAD;
+    if (l.x1 < x0 || l.x0 > x1 || l.y1 < y0 || l.y0 > y1) return false;
+    for (let i = 0; i < 24; i++) if (segInBox(l.pts[i], l.pts[i + 1], x0, x1, y0, y1)) return true;
+    return false;
+  };
+  // Do lines l and m (m shifted by (ox, oy)) cross?
+  const ccw = (ax, ay, bx, by, px, py) => (bx - ax) * (py - ay) - (by - ay) * (px - ax);
+  const crosses = (l, m, ox = 0, oy = 0) => {
+    const mx0 = m.x0 + ox, mx1 = m.x1 + ox, my0 = m.y0 + oy, my1 = m.y1 + oy;
+    if (l.x1 < mx0 || l.x0 > mx1 || l.y1 < my0 || l.y0 > my1) return false;
+    for (let i = 0; i < 24; i++) {
+      const a = l.pts[i], b = l.pts[i + 1];
+      if (Math.max(a.x, b.x) < mx0 || Math.min(a.x, b.x) > mx1 || Math.max(a.y, b.y) < my0 || Math.min(a.y, b.y) > my1) continue;
+      for (let j = 0; j < 24; j++) {
+        const px = m.pts[j].x + ox, py = m.pts[j].y + oy, qx = m.pts[j + 1].x + ox, qy = m.pts[j + 1].y + oy;
+        if (ccw(a.x, a.y, b.x, b.y, px, py) * ccw(a.x, a.y, b.x, b.y, qx, qy) < 0 && ccw(px, py, qx, qy, a.x, a.y) * ccw(px, py, qx, qy, b.x, b.y) < 0) return true;
       }
-      if (!mx && !my) continue;
-      for (const id of mine) if (!hidden.has(id)) { N(id).x += mx; N(id).y += my; }
+    }
+    return false;
+  };
+  const meet = (l, m) => m.p === l.p || m.p === l.n.id || l.p === m.n.id;   // lines that meet at a bubble can't cross
+  const crowds = (a, b) => Math.abs(a.x - b.x) < (geom[a.id].w + geom[b.id].w) / 2 + GAP && Math.abs(a.y - b.y) < (geom[a.id].h + geom[b.id].h) / 2 + GAP;
+  // What a move of the branch `ids` (s and what hangs off it) could affect: everything within `reach` of it.
+  const nearby = (S, ids, reach) => {
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const id of [...ids, N(ids[0]).parent]) {
+      const n = N(id), g = geom[id];
+      x0 = Math.min(x0, n.x - g.w / 2); x1 = Math.max(x1, n.x + g.w / 2); y0 = Math.min(y0, n.y - g.h / 2); y1 = Math.max(y1, n.y + g.h / 2);
+    }
+    const r = reach + GAP + PAD, near = (ax0, ax1, ay0, ay1) => ax1 > x0 - r && ax0 < x1 + r && ay1 > y0 - r && ay0 < y1 + r;
+    return {
+      others: ns.filter(b => !S.has(b.id) && near(b.x - geom[b.id].w / 2, b.x + geom[b.id].w / 2, b.y - geom[b.id].h / 2, b.y + geom[b.id].h / 2)),
+      otherLines: [...lines.values()].filter(l => !S.has(l.n.id) && near(l.x0, l.x1, l.y0, l.y1)),
+      inner: ids.slice(1).map(id => lines.get(id)),
+    };
+  };
+  // The score for the branch after it has been shifted by v: the branch crowding other bubbles, its lines
+  // running under bubbles, other lines running under it, and its lines crossing others. Only the line
+  // to s changes shape; the ones inside the branch just move with it (their saved copies are shifted by
+  // v to compare). Stops counting once it reaches `limit`.
+  const cost = (S, ids, { others, otherLines, inner }, v, limit = Infinity) => {
+    let c = 0;
+    const add = k => (c += k) >= limit;
+    for (const id of ids) for (const b of others) if (crowds(N(id), b) && add(5000)) return c;   // never worth it
+    const root = lineOf(N(ids[0]));
+    for (const b of others) if (b.id !== root.p && hits(root, b) && add(1000)) return c;
+    for (const l of inner) for (const b of others) if (hits(l, b, -v.x, -v.y) && add(1000)) return c;
+    for (const id of ids.slice(1)) if (hits(root, N(id)) && add(1000)) return c;
+    for (const l of otherLines) for (const id of ids) if (id !== l.p && hits(l, N(id)) && add(1000)) return c;
+    for (const m of otherLines) if (!meet(root, m) && crosses(root, m) && add(200)) return c;
+    for (const m of inner) if (!meet(root, m) && crosses(root, m, v.x, v.y) && add(200)) return c;
+    for (const l of inner) for (const m of otherLines) if (!meet(l, m) && crosses(l, m, -v.x, -v.y) && add(200)) return c;
+    return c;
+  };
+  // The clockwise order of a bubble's branches round it (as a loop, so it doesn't matter which comes first).
+  const order = p => {
+    const ids = kids(p.id).filter(k => !hidden.has(k.id)).sort((a, b) => Math.atan2(a.y - p.y, a.x - p.x) - Math.atan2(b.y - p.y, b.x - p.x)).map(k => k.id);
+    const i = ids.indexOf(Math.min(...ids));
+    return [...ids.slice(i), ...ids.slice(0, i)].join();
+  };
+  // Candidate moves for s, smallest first: swung round its parent (and pulled in or pushed out a little),
+  // moved straight in or out, or slid in any direction.
+  const moves = s => {
+    const p = N(s.parent), r = Math.hypot(s.x - p.x, s.y - p.y), a = Math.atan2(s.y - p.y, s.x - p.x), out = [];
+    for (let d = 6; d <= 42; d += 6) for (const sgn of [1, -1]) for (const k of [0.85, 1, 1.15, 1.3]) {
+      const b = a + sgn * d * Math.PI / 180;
+      out.push({ x: p.x + r * k * Math.cos(b) - s.x, y: p.y + r * k * Math.sin(b) - s.y });
+    }
+    for (const k of [0.7, 0.85, 1.15, 1.3, 1.5]) out.push({ x: (s.x - p.x) * (k - 1), y: (s.y - p.y) * (k - 1) });
+    for (let d = 30; d <= 240; d += 30) for (let i = 0; i < 8; i++) out.push({ x: d * Math.cos(i * Math.PI / 4), y: d * Math.sin(i * Math.PI / 4) });
+    return out.map(v => ({ ...v, step: Math.hypot(v.x, v.y) * 0.5 })).sort((u, v) => u.step - v.step);
+  };
+  const shift = (ids, dx, dy) => { for (const id of ids) { N(id).x += dx; N(id).y += dy; } };
+  // A huge, crowded diagram could keep this busy for seconds: it gives up after a fixed amount of work
+  // (always the same, so tidying the same diagram always gives the same result).
+  let budget = 3000;
+  for (let round = 0; round < rounds && budget > 0; round++) {
+    lines = new Map(ns.filter(n => !isRoot(n)).map(n => [n.id, lineOf(n)]));   // afresh: moving one bubble can flip another's S
+    const clashes = [];
+    for (const l of lines.values()) for (const b of ns) if (b.id !== l.n.id && b.id !== l.p && hits(l, b)) clashes.push([b, l.n]);
+    if (!clashes.length) break;
+    let moved = false;
+    for (const [b, n] of clashes) {
+      if (budget <= 0) break;
+      if (!hits(lines.get(n.id), b)) continue;   // an earlier move already sorted this one out
+      let best = null;
+      for (const s of [b, n]) {
+        if (isRoot(s)) continue;
+        const ids = subtree(s.id).filter(id => !hidden.has(id));
+        if (ids.length > 30) continue;   // moving a whole big branch would upset the layout more than it helps
+        const S = new Set(ids), was = order(N(s.parent)), vs = moves(s);
+        const pool = nearby(S, ids, Math.max(...vs.map(v => Math.hypot(v.x, v.y)))), before = cost(S, ids, pool, { x: 0, y: 0 });
+        for (const v of vs) {
+          const limit = before + (best?.gain ?? -1) - v.step;
+          if (limit <= 0) break;   // the rest are bigger moves, so can't do better
+          budget--;
+          shift(ids, v.x, v.y);
+          const gain = cost(S, ids, pool, v, limit) + v.step - before;
+          if (gain < (best?.gain ?? -1) && order(N(s.parent)) === was) best = { ids, v, gain };
+          shift(ids, -v.x, -v.y);
+        }
+      }
+      if (!best) continue;
+      shift(best.ids, best.v.x, best.v.y);
+      for (const id of best.ids) if (lines.has(id)) lines.set(id, lineOf(N(id)));
       moved = true;
     }
+    if (!moved) break;
   }
-  return moved;
 }
+// Nudge overlapping bubbles apart along whichever axis needs the smaller move; the centre never moves.
 function resolveOverlaps(gap = 18) {
   const ns = visible();
   for (let it = 0; it < 500; it++) {
@@ -4659,7 +5088,7 @@ svg.addEventListener('dblclick', e => {
 
 /* ---------- version, installing and updates ---------- */
 // build.py stamps these into each release; the source copy says 'dev' and never looks for updates.
-const APP_VERSION = '2026.11.03.1139', APP_UPDATE_URL = 'https://raw.githubusercontent.com/BannerZerk46/spider-diagram/main/dist/';
+const APP_VERSION = '2026.11.03.1456', APP_UPDATE_URL = 'https://raw.githubusercontent.com/BannerZerk46/spider-diagram/main/dist/';
 let aboutApp = { version: APP_VERSION, updates: false, canInstall: false, installed: false };
 const INSTALL_STORE = 'spider-diagram:no-install-offer';
 async function loadAbout() {
