@@ -1,9 +1,9 @@
 {
- "version": "2026.11.02.1517",
- "summary": "A version menu in the corner shows what's new in each version and offers updates, and the shortcuts list is shorter.",
+ "version": "2026.11.03.1139",
+ "summary": "The home button now closes your diagram (asking to save first), and the app opens on your diagrams unless there's unsaved work.",
  "sha256": {
-  "spider-diagram-linux": "c432db67f7950214c622706c219280482805a537d46ffc44003b500602e35ca4",
-  "spider-diagram-windows.cmd": "bd1a1a3266442a6cf66a9ad61352eaf13960583ed0592cf107e1889a53361ebc",
-  "spider-diagram-chromeos.html": "2d8a43a87e518b01324339b94376020f611765065bfac08f4d9d077378331044"
+  "spider-diagram-linux": "dcb0f29fd01647b9cd865dade330f239336e55b9acdedee1115a55dce2141e93",
+  "spider-diagram-windows.cmd": "90c065c244a97f6f12a0341cb3014a7f9ef68f641f925d42da6ec6c77cb25fc7",
+  "spider-diagram-chromeos.html": "35bf62e8bdb0e1f1ade051914c9c0d9d565e4d1f24f2e12beb89b43a7188daba"
  }
 }

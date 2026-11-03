@@ -140,6 +140,15 @@
   .ver-log .ver-when { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 11.5px; }
   .ver-log .ver-when em { font-style: normal; font-size: 11px; font-weight: 600; color: var(--on-ink); background: var(--on-bg); border-radius: 4px; padding: 0 5px; }
   .ver-log p { margin: 0; color: var(--muted); line-height: 1.45; }
+  /* "Save changes?" when you leave a diagram */
+  #leaveDlg { position: fixed; inset: 0; z-index: 48; display: grid; place-items: center; background: rgba(0,0,0,.35); }
+  #leaveDlg[hidden] { display: none; }
+  .dlg { width: min(430px, calc(100vw - 32px)); display: flex; flex-direction: column; gap: 8px; padding: 18px 20px 16px;
+    background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--menu-shadow); }
+  .dlg h2 { margin: 0; font-size: 17px; overflow-wrap: anywhere; }
+  .dlg p { margin: 0; color: var(--muted); font-size: 14px; }
+  .dlg .row { display: flex; gap: 8px; margin-top: 8px; }
+  .dlg .row .grow { flex: 1; }
   #tut {
     position: fixed; right: 20px; bottom: 20px; z-index: 40; width: 460px; max-height: calc(100vh - 32px); overflow: auto;
     display: flex; flex-direction: column; gap: 10px; padding: 16px 20px 18px;
@@ -332,7 +341,7 @@
 <header>
   <div class="row">
     <div class="group">
-      <button id="bHome" class="icon" title="All your diagrams"><svg class="ic" aria-hidden="true"><use href="#i-home"/></svg></button>
+      <button id="bHome" class="icon" title="Close this diagram and go to all your diagrams"><svg class="ic" aria-hidden="true"><use href="#i-home"/></svg></button>
       <span id="docname" title="Current file"></span>
     </div>
     <div class="group menu-wrap">
@@ -523,6 +532,13 @@
     <button id="homeInstallNo" class="icon" title="Don't ask again"><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg></button>
   </div>
 </div>
+<div id="leaveDlg" hidden>
+  <div class="dlg" role="dialog" aria-modal="true" aria-labelledby="leaveTitle">
+    <h2 id="leaveTitle"></h2>
+    <p>If you don't save, your changes since the last save are lost.</p>
+    <div class="row"><button id="leaveDiscard">Don't save</button><span class="grow"></span><button id="leaveCancel">Cancel</button><button id="leaveSave" class="primary">Save</button></div>
+  </div>
+</div>
 <div id="verWrap" class="menu-wrap">
   <button id="verBtn" aria-haspopup="true" aria-expanded="false" title="Version, updates and what's new"><span class="ver-dot"></span><span id="verLabel"></span></button>
   <div id="verMenu" class="menu" hidden>
@@ -539,6 +555,11 @@
 <!-- What each version changed, newest first: release.py adds an entry, and the menu above shows them. -->
 <script id="changelog" type="application/json">
 [
+ {
+  "version": "2026.11.03.1139",
+  "summary": "The home button now closes your diagram (asking to save first), and the app opens on your diagrams unless there's unsaved work.",
+  "notes": "The homepage is its own screen instead of a cover over the open diagram. Going home closes the diagram, and if it has unsaved changes you're asked whether to save them first. When you open the app, it starts on the homepage, unless the diagram you had open has unsaved changes, in which case it opens that so you can carry on."
+ },
  {
   "version": "2026.11.02.1517",
   "summary": "A version menu in the corner shows what's new in each version and offers updates, and the shortcuts list is shorter.",
@@ -607,7 +628,6 @@
       </div>
     </div>
     <button id="homeTheme" class="icon" title="Switch between light and dark mode"><svg class="ic" aria-hidden="true"><use href="#i-moon"/></svg></button>
-    <button id="homeClose" class="icon" title="Back to your diagram (Esc)"><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg></button>
   </div>
   <div id="homeFoldersPanel" class="home-folders" hidden></div>
   <div class="home-tools"><div id="homeStatus" class="home-status"></div><select id="homeSort" title="Sort order"><option value="recent">Recently changed</option><option value="name">Name</option></select></div>
@@ -3514,8 +3534,9 @@ const on = (id, ev, fn) => $(id).addEventListener(ev, fn);
 function newDiagram() {
   if (editing) finishEdit();
   flushNotes(); commit(); dropPendingNotes(); doc = blank(); sel = 0;
+  const fromHome = !homeEl.hidden;
   render(); fit(); setFile(null); hideHome();
-  toast('New diagram — Ctrl+Z to get the old one back');
+  if (!fromHome) toast('New diagram — Ctrl+Z to get the old one back');
 }
 on('#bNew', 'click', newDiagram);
 on('#bOpen', 'click', open);
@@ -3863,7 +3884,6 @@ async function showHome() {
   flushNotes();
   closeMenu();
   homeEl.hidden = false;
-  $('#homeClose').hidden = false;
   const search = $('#homeSearch');
   search.focus(); search.select();
   if (!HOST) {
@@ -3982,15 +4002,47 @@ on('#homeTour', 'click', startTutorial);
 on('#lineLabel', 'click', () => { closeMenu(); if (selLink != null) editLabel(selLink); });
 on('#homeExample', 'click', openTour);
 on('#bHelp', 'click', startTutorial);
-on('#homeClose', 'click', hideHome);
 on('#homeTheme', 'click', () => setTheme(appTheme === 'dark' ? 'light' : 'dark'));
 on('#homeFolders', 'click', () => { $('#homeFoldersPanel').hidden = !$('#homeFoldersPanel').hidden; renderFolders(); });
-on('#bHome', 'click', showHome);
+on('#bHome', 'click', closeDiagram);
+// Going home closes the diagram, as in any other app: asking first if there are unsaved changes.
+function askToLeave() {
+  $('#leaveTitle').textContent = `Save changes to “${doc.title || fileName?.replace(/\.(spider|json)$/i, '') || docTitle()}”?`;
+  $('#leaveDlg').hidden = false;
+  $('#leaveSave').focus();
+  return new Promise(done => {
+    const finish = answer => { $('#leaveDlg').hidden = true; $('#leaveDlg').onclick = $('#leaveDlg').onkeydown = null; done(answer); };
+    $('#leaveDlg').onclick = e => {
+      const b = e.target.closest('button');
+      if (b) finish(b.id === 'leaveSave' ? 'save' : b.id === 'leaveDiscard' ? 'discard' : 'cancel');
+      else if (e.target === $('#leaveDlg')) finish('cancel');   // clicked outside the box
+    };
+    $('#leaveDlg').onkeydown = e => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); finish('cancel'); } };
+  });
+}
+async function closeDiagram() {
+  if (editing) finishEdit();
+  flushNotes();
+  if (dirty) {
+    const answer = await askToLeave();
+    if (answer === 'cancel') return;
+    if (answer === 'save') { await save(); if (dirty) return; }   // (the save was cancelled or failed)
+  }
+  leaveDiagram();
+  showHome();
+}
+// Put the editor back to an empty diagram, with no file and nothing to undo.
+function leaveDiagram() {
+  if (notesOpen()) closeNotes();
+  dropPendingNotes(); closeMenu();
+  doc = blank(); sel = 0; selLink = null; undoStack = []; redoStack = [];
+  setFile(null); render(); fit();
+}
 homeEl.addEventListener('keydown', e => {
   const search = $('#homeSearch'), mod = e.ctrlKey || e.metaKey;
   if (e.key === 'Escape') {
     e.preventDefault();
-    if (search.value) { search.value = ''; renderHome(); search.focus(); } else hideHome();
+    if (search.value) { search.value = ''; renderHome(); search.focus(); }
   } else if (e.key === '/' && e.target !== search) { e.preventDefault(); search.focus(); search.select(); }
   else if (e.key === 'Enter' && e.target === search) {   // open the best match
     const first = $('#homeGrid [data-path]');
@@ -4909,9 +4961,9 @@ const TUT_STEPS = [
     text: () => `<p>Click the name at the top left (it says <b>Unsaved diagram</b> for now) to give this diagram its own title, then press <kbd>Enter</kbd>.</p>
       <p class="tip">Without a title, a diagram is named after its file, or its main ideas.</p>`,
     done: () => !!doc.title },
-  { title: 'Saving', optional: true, target: '#bSave, #bHome', allow: '#bSaveAs',
+  { title: 'Saving', optional: true, target: '#bSave', allow: '#bSaveAs',
     text: () => `<p>${ui('File')} → <b>Save</b> (<kbd>Ctrl+S</kbd>) keeps your diagram as a <b>.spider</b> file, which you can open again later and keep editing.</p>
-      ${HOST ? `<p>The ${ui('home')} button at the top left shows all your diagrams, and you can search them by title, bubbles and notes.</p>` : `<p class="tip">Your work is also kept in this browser as you go, so a closed tab doesn't lose it, but saving a file is safer.</p>`}
+      ${HOST ? `<p>The ${ui('home')} button at the top left closes the diagram (asking to save first) and shows all your diagrams, which you can search by title, bubbles and notes. Try it after the tutorial: it would close this practice diagram.</p>` : `<p class="tip">Your work is also kept in this browser as you go, so a closed tab doesn't lose it, but saving a file is safer.</p>`}
       <p class="tip">You don't have to save this practice diagram, so you can skip this.</p>`,
     done: t => t.seen.has('save') },
   { title: 'Exporting', target: '#bExportMenu',
@@ -5030,7 +5082,7 @@ let resumeTut = null;
 try { resumeTut = localStorage.getItem(TUT_STORE); } catch {}
 if (firstRun && !launchedWithFile) startTutorial();
 else if (resumeTut != null && !launchedWithFile && TUT_STEPS[+resumeTut]) showTutStep(+resumeTut);   // carry on where you left off
-else if (HOST && !launchedWithFile) showHome();   // started without a file: begin on the homepage
+else if (HOST && !launchedWithFile && !dirty) { leaveDiagram(); showHome(); }   // begin on the homepage, unless there's unsaved work to carry on with
 loadAbout();
 </script>
 </body>
