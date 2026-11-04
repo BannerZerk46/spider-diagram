@@ -556,6 +556,11 @@
 <script id="changelog" type="application/json">
 [
  {
+  "version": "2026.11.04.1629",
+  "summary": "URGENT update: please install this now, so Spider Diagram keeps getting updates from its new home on GitHub.",
+  "notes": "The developer's GitHub account has been renamed from BannerZerk46 to WMBanner. This version checks for updates at the new address (github.com/WMBanner/spider-diagram). Older versions still check the old address, which will stop working, so without this update you won't get future updates. The download links in the README point to the new address too. Behind the scenes, publishing a release now retries if GitHub has trouble."
+ },
+ {
   "version": "2026.11.04.0957",
   "summary": "Links between the same bubbles no longer hide on top of each other, and main ideas leave room for their links.",
   "notes": "When two links join the same bubbles, each now takes its own path instead of one hiding under the other, with wider arcs to choose from when the way is crowded. Tidying also keeps space for links when it packs main ideas together, so links no longer have to run behind other bubbles."
@@ -5108,7 +5113,7 @@ svg.addEventListener('dblclick', e => {
 
 /* ---------- version, installing and updates ---------- */
 // build.py stamps these into each release; the source copy says 'dev' and never looks for updates.
-const APP_VERSION = '2026.11.04.0957', APP_UPDATE_URL = 'https://raw.githubusercontent.com/BannerZerk46/spider-diagram/main/dist/';
+const APP_VERSION = '2026.11.04.1629', APP_UPDATE_URL = 'https://raw.githubusercontent.com/WMBanner/spider-diagram/main/dist/';
 let aboutApp = { version: APP_VERSION, updates: false, canInstall: false, installed: false };
 const INSTALL_STORE = 'spider-diagram:no-install-offer';
 async function loadAbout() {

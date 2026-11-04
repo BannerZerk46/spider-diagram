@@ -1,9 +1,9 @@
 {
- "version": "2026.11.04.0957",
- "summary": "Links between the same bubbles no longer hide on top of each other, and main ideas leave room for their links.",
+ "version": "2026.11.04.1629",
+ "summary": "URGENT update: please install this now, so Spider Diagram keeps getting updates from its new home on GitHub.",
  "sha256": {
-  "spider-diagram-linux": "642c043ad532c6ea2254f0d11e51e9d242157ddc68c5f6e8fc67fd97c4cbecb3",
-  "spider-diagram-windows.cmd": "4e7b2e2da2c425b46eea80f3855b459b49bd6aa5d7226f3b0cbb22571f312423",
-  "spider-diagram-chromeos.html": "8fec065ef36a4acfa1d9542380e3f2ff9c5d2af9f8f3e102300f59f33ca6d71f"
+  "spider-diagram-linux": "d5f2eded4132c0438e99aadbb6b849f7fd18a939cc7049c35c73de0b8964505a",
+  "spider-diagram-windows.cmd": "03395335fa11368a2d54fa687fecfb5eb7d2fde5ac8f2d7177d7e5d688608f81",
+  "spider-diagram-chromeos.html": "5381a1caeb7074075d752288ba69d6eaeb331067bb1b9027f893bd5203be41c5"
  }
 }
