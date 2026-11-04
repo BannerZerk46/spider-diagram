@@ -556,6 +556,11 @@
 <script id="changelog" type="application/json">
 [
  {
+  "version": "2026.11.04.0957",
+  "summary": "Links between the same bubbles no longer hide on top of each other, and main ideas leave room for their links.",
+  "notes": "When two links join the same bubbles, each now takes its own path instead of one hiding under the other, with wider arcs to choose from when the way is crowded. Tidying also keeps space for links when it packs main ideas together, so links no longer have to run behind other bubbles."
+ },
+ {
   "version": "2026.11.03.1456",
   "summary": "Tidying now fans each bubble's ideas out around it, so diagrams are much more compact and lines never run under other bubbles.",
   "notes": "Each bubble's ideas spread out in a fan around that bubble instead of on a big circle around the main idea, so lines are far shorter and the empty space gets used. Branches move in as close as they fit, and separate main ideas pack close together while each keeps its own patch. Lines bend whichever way keeps them clear of other bubbles, and anything still in the way is nudged aside, so a line never runs under a bubble it doesn't join. Diagrams will look a little different the first time they're tidied, but everything stays in the same clockwise order."
@@ -1444,7 +1449,7 @@ function routeLink(p, n, others, taken = [], line = LINE_DEFAULTS.link) {
   const a = { x: p.x, y: p.y }, b = { x: n.x, y: n.y }, wide = Math.abs(b.x - a.x) >= Math.abs(b.y - a.y);
   const options = doc.settings.lines === 'straight' ? [[aimArrows(bowCurve(a, b, 0), p, n, line), 0]]
     : [[sCurve(a, b, wide), 0], [sCurve(a, b, !wide), 3]];
-  for (const bow of [0.14, -0.14, 0.3, -0.3, 0.5, -0.5, 0.8, -0.8]) options.push([aimArrows(bowCurve(a, b, bow), p, n, line), 6 + Math.abs(bow) * 10]);
+  for (const bow of [0.14, -0.14, 0.3, -0.3, 0.5, -0.5, 0.8, -0.8, 1.1, -1.1]) options.push([aimArrows(bowCurve(a, b, bow), p, n, line), 6 + Math.abs(bow) * 10]);
   let best = null, score = Infinity;
   for (const [P, cost] of options) {
     let hits = 0, near = 0;
@@ -1458,7 +1463,7 @@ function routeLink(p, n, others, taken = [], line = LINE_DEFAULTS.link) {
       const hiddenEnd = outlineDist(p, q.x, q.y) < 6 || outlineDist(n, q.x, q.y) < 6;
       if (!hiddenEnd && taken.some(t => Math.abs(t.x - q.x) < 14 && Math.abs(t.y - q.y) < 14)) near++;
     }
-    const sc = hits * 1000 + near * 40 + cost;
+    const sc = hits * 1000 + near * 120 + cost;   // running along another link hides it: worse than grazing a bubble
     if (sc < score) { score = sc; best = P; }
   }
   return best;
@@ -2228,7 +2233,7 @@ function pullIn(top, ks) {
 // line runs from the centre to each group's first bubble (k), which must stay clear too. Furthest out
 // first, a few times over, as each one coming in can make room for another. GAP: the room kept round
 // each group's bubbles. `solid`: groups are whole trees, each kept to its own patch (the box round all
-// of it), so two main ideas' bubbles never mingle.
+// of it), so two main ideas' bubbles never mingle, and with room for their links.
 function gather(centre, groups, ns, joined, GAP = 30, solid = false) {
   if (groups.length < 2 && !joined) return;
   const ang = g => Math.atan2(g.k.y - centre.y, g.k.x - centre.x), dist = g => Math.hypot(g.k.x - centre.x, g.k.y - centre.y);
@@ -2262,11 +2267,26 @@ function gather(centre, groups, ns, joined, GAP = 30, solid = false) {
       }
       const myLines = solid ? [] : ids.filter(id => N(id).parent != null && mine.has(N(id).parent)).map(id => lineOf(N(id)));
       const theirLines = solid ? [] : others.filter(n => n.parent != null).map(lineOf);
+      // Whole trees also keep their links' way clear (as first tried, from bubble to bubble): links
+      // from this one mustn't run through other bubbles, and others' links mustn't run through it.
+      const chain = (a, b) => { const P = plainCurve(a, b), pts = []; for (let t = 0; t <= 24; t++) pts.push(bezAt(P, t / 24)); return { pts, x0: Math.min(a.x, b.x), x1: Math.max(a.x, b.x), y0: Math.min(a.y, b.y), y1: Math.max(a.y, b.y) }; };
+      const ends = solid ? Object.values(doc.links).map(l => [N(visibleOf(l.from)), N(visibleOf(l.to))]).filter(([a, b]) => a !== b) : [];
+      const outLinks = ends.filter(([a, b]) => mine.has(a.id) !== mine.has(b.id)).map(([a, b]) => mine.has(a.id) ? [a, b] : [b, a]);
+      const theirLinks = ends.filter(([a, b]) => !mine.has(a.id) && !mine.has(b.id)).map(([a, b]) => ({ a, b, ...chain(a, b) }));
       // Would the group, moved by (dx, dy), crowd anything or have a line run through it (or run its own
       // lines through anything)?
       const fits = (dx, dy) => {
         const bx0 = x0 + dx - GAP, bx1 = x1 + dx + GAP, by0 = y0 + dy - GAP, by1 = y1 + dy + GAP, near = [];
-        if (solid) { for (const b of blocks.values()) if (b.x1 > bx0 && b.x0 < bx1 && b.y1 > by0 && b.y0 < by1) return false; return true; }
+        if (solid) {
+          for (const b of blocks.values()) if (b.x1 > bx0 && b.x0 < bx1 && b.y1 > by0 && b.y0 < by1) return false;
+          for (const l of theirLinks) if (l.x1 > bx0 && l.x0 < bx1 && l.y1 > by0 && l.y0 < by1) for (const id of ids) if (through(l, N(id), -dx, -dy)) return false;
+          for (const [a, b] of outLinks) {
+            const l = chain({ x: a.x + dx, y: a.y + dy }, b);
+            for (const o of others) if (o !== b && through(l, o)) return false;
+            for (const id of ids) if (id !== a.id && through(l, N(id), -dx, -dy)) return false;
+          }
+          return true;
+        }
         for (const o of others) {
           const go = geom[o.id];
           if (o.x + go.w / 2 < bx0 || o.x - go.w / 2 > bx1 || o.y + go.h / 2 < by0 || o.y - go.h / 2 > by1) continue;
@@ -5088,7 +5108,7 @@ svg.addEventListener('dblclick', e => {
 
 /* ---------- version, installing and updates ---------- */
 // build.py stamps these into each release; the source copy says 'dev' and never looks for updates.
-const APP_VERSION = '2026.11.03.1456', APP_UPDATE_URL = 'https://raw.githubusercontent.com/BannerZerk46/spider-diagram/main/dist/';
+const APP_VERSION = '2026.11.04.0957', APP_UPDATE_URL = 'https://raw.githubusercontent.com/BannerZerk46/spider-diagram/main/dist/';
 let aboutApp = { version: APP_VERSION, updates: false, canInstall: false, installed: false };
 const INSTALL_STORE = 'spider-diagram:no-install-offer';
 async function loadAbout() {

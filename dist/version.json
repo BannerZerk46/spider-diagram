@@ -1,9 +1,9 @@
 {
- "version": "2026.11.03.1456",
- "summary": "Tidying now fans each bubble's ideas out around it, so diagrams are much more compact and lines never run under other bubbles.",
+ "version": "2026.11.04.0957",
+ "summary": "Links between the same bubbles no longer hide on top of each other, and main ideas leave room for their links.",
  "sha256": {
-  "spider-diagram-linux": "821dafd4275060b6f7f3bebf9448ca991335394ccec6b7759df8de24eda98482",
-  "spider-diagram-windows.cmd": "c3032520756b58f8977fd65dcfef0eda3c8a5148d2d24506d5ed4520e7307ab8",
-  "spider-diagram-chromeos.html": "c916ce2f2d5c397242d01798c1497096dcea13481ebbcc5e06f5f317cfdbff50"
+  "spider-diagram-linux": "642c043ad532c6ea2254f0d11e51e9d242157ddc68c5f6e8fc67fd97c4cbecb3",
+  "spider-diagram-windows.cmd": "4e7b2e2da2c425b46eea80f3855b459b49bd6aa5d7226f3b0cbb22571f312423",
+  "spider-diagram-chromeos.html": "8fec065ef36a4acfa1d9542380e3f2ff9c5d2af9f8f3e102300f59f33ca6d71f"
  }
 }
