@@ -1,9 +1,9 @@
 {
- "version": "2026.11.06.1520",
- "summary": "Links are much tidier: they shade between their bubbles' colours, find their way round bubbles, and ideas turn to face what they link to.",
+ "version": "2026.11.06.1524",
+ "summary": "Spider Diagram now checks for updates every half a minute while it's open, so new versions show up straight away.",
  "sha256": {
-  "spider-diagram-linux": "a993147cee5d13a44a128a450d3066c6350334d9b89d6360315093b653bdd4c6",
-  "spider-diagram-windows.cmd": "53509aad49925e8cf535d412fcb8480d5dff3dbaa26a15f9167f991403754bd8",
-  "spider-diagram-chromeos.html": "ab4c56c794beb34636d86f86944516ba6a9c57cb7653943a05391e1e58db97a3"
+  "spider-diagram-linux": "10d9c1078fa2dc00b5aac7fd0defc09e6fc0f93632f463dfa125596bcb9c9e39",
+  "spider-diagram-windows.cmd": "316c48741f3eaeac7a193bffd04f88840fe5762cb9d8b6bafa6ff5eae28b220f",
+  "spider-diagram-chromeos.html": "d452c85daa14f626560b8f2a7194cfdfe0e681437775c613946aea15d89547d8"
  }
 }

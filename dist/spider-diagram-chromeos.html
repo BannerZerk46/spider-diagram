@@ -557,6 +557,11 @@
 <script id="changelog" type="application/json">
 [
  {
+  "version": "2026.11.06.1524",
+  "summary": "Spider Diagram now checks for updates every half a minute while it's open, so new versions show up straight away.",
+  "notes": "Updates used to be checked only when the app started and every 6 hours after. Now it checks quietly every 30 seconds: no \"Checking…\" each time, a check that fails while you're offline doesn't complain, and if you click Later the notice stays away until a newer version comes out."
+ },
+ {
   "version": "2026.11.06.1520",
   "summary": "Links are much tidier: they shade between their bubbles' colours, find their way round bubbles, and ideas turn to face what they link to.",
   "notes": "Links now shade from one bubble's colour to the other's (turn on \"Colour links by label\" in the Diagram menu to colour them by label instead). Tidying leaves room for links and their labels, turns linked ideas within a branch to face what they link to (a main idea's own branches keep their order), and moves bubbles out of a link's way. Links can attach off-centre so they don't land on top of a branch line, arrows meet their bubbles square on, and labels find a clear spot near the middle of their link. Pictures have rounded corners again."
@@ -5336,7 +5341,7 @@ svg.addEventListener('dblclick', e => {
 
 /* ---------- version, installing and updates ---------- */
 // build.py stamps these into each release; the source copy says 'dev' and never looks for updates.
-const APP_VERSION = '2026.11.06.1520', APP_UPDATE_URL = 'https://raw.githubusercontent.com/WMBanner/spider-diagram/main/dist/';
+const APP_VERSION = '2026.11.06.1524', APP_UPDATE_URL = 'https://raw.githubusercontent.com/WMBanner/spider-diagram/main/dist/';
 let aboutApp = { version: APP_VERSION, updates: false, canInstall: false, installed: false };
 const INSTALL_STORE = 'spider-diagram:no-install-offer';
 async function loadAbout() {
@@ -5356,7 +5361,7 @@ async function loadAbout() {
   showInstallOffer();
   if (aboutApp.updates) {
     setTimeout(() => checkUpdate(false), 2500);
-    setInterval(() => checkUpdate(false), 6 * 3600e3);   // for a tab left open for days
+    setInterval(() => checkUpdate(false), 30e3);   // often, so a new release shows up within a minute or so
   }
 }
 const VER_SEEN = 'spider-diagram:version-seen';
@@ -5411,17 +5416,22 @@ async function newerVersion() {
   const r = await (await fetch(APP_UPDATE_URL + 'version.json?t=' + Date.now(), { cache: 'no-store' })).json();
   return r.version > APP_VERSION ? r : null;
 }
+// Checking in the background (every half a minute) is quiet: no "Checking…", and a check that fails
+// (the Wi-Fi dropped for a moment) keeps what it knew before. Only clicking "Check for updates" says so.
 async function checkUpdate(manual) {
-  updateState = 'checking'; showVersion();
+  if (updating) return;
+  if (manual) { updateState = 'checking'; showVersion(); }
   try {
     const r = await newerVersion();
     updateInfo = r ? { version: r.version, summary: r.summary || '' } : null;
     updateState = r ? '' : 'none';
-    if (r && !updateDismissed) showUpdateBar();
-  } catch { updateState = 'failed'; if (manual) toast("Couldn't check for updates. Are you online?"); }
+    if (r && (manual || r.version !== updateDismissed)) showUpdateBar();
+  } catch {
+    if (manual) { updateState = 'failed'; toast("Couldn't check for updates. Are you online?"); }
+  }
   showVersion();
 }
-let updateDismissed = false;   // "Later": the button still says there's an update, but the notice stays away
+let updateDismissed = null, updating = false;   // "Later" (for that version): the button still says there's an update, but the notice stays away until a newer one
 function showUpdateBar() {
   $('#updateText').textContent = `Version ${updateInfo.version} is ready: ${updateInfo.summary || 'a new version of Spider Diagram.'}`;
   $('#updateGo').textContent = HOST ? 'Update now' : 'Download it';
@@ -5439,14 +5449,14 @@ async function runUpdate() {
       const a = document.createElement('a');
       a.href = URL.createObjectURL(new Blob([blob], { type: 'text/html' })); a.download = 'spider-diagram-chromeos.html'; a.click();
       $('#updateText').textContent = 'Downloaded. Open the new spider-diagram-chromeos.html from your Downloads, and delete the old one.';
-      go.hidden = true;
+      go.hidden = true; updateDismissed = v;   // (so the next check doesn't put the notice back)
     } catch { toast("Couldn't download the update. Are you online?"); }
     return;
   }
-  go.disabled = true;
+  go.disabled = true; updating = true;
   $('#updateText').textContent = 'Updating…';
   try { await api('/api/update/apply'); }
-  catch (err) { toast(err.message); $('#updateText').textContent = 'The update didn\'t work.'; go.disabled = false; return; }
+  catch (err) { toast(err.message); $('#updateText').textContent = 'The update didn\'t work.'; go.disabled = false; updating = false; return; }
   // Your diagram is kept in the browser as you go, so it's still here after the app restarts.
   $('#updateText').textContent = 'Restarting…';
   appRestarting = true;
@@ -5457,7 +5467,7 @@ async function runUpdate() {
   location.reload();
 }
 on('#updateGo', 'click', runUpdate);
-on('#updateLater', 'click', () => { $('#updateBar').hidden = true; updateDismissed = true; });
+on('#updateLater', 'click', () => { $('#updateBar').hidden = true; updateDismissed = updateInfo?.version ?? null; });
 on('#serverCopy', 'click', () => download(serialize(), slug() + '.spider'));
 on('#verBtn', 'click', e => { toggleMenu(e.currentTarget); $('#verBtn').classList.remove('is-new'); });
 on('#verCheck', 'click', () => checkUpdate(true));
