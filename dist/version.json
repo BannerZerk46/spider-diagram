@@ -1,9 +1,9 @@
 {
- "version": "2026.11.04.1629",
- "summary": "URGENT update: please install this now, so Spider Diagram keeps getting updates from its new home on GitHub.",
+ "version": "2026.11.06.1520",
+ "summary": "Links are much tidier: they shade between their bubbles' colours, find their way round bubbles, and ideas turn to face what they link to.",
  "sha256": {
-  "spider-diagram-linux": "d5f2eded4132c0438e99aadbb6b849f7fd18a939cc7049c35c73de0b8964505a",
-  "spider-diagram-windows.cmd": "03395335fa11368a2d54fa687fecfb5eb7d2fde5ac8f2d7177d7e5d688608f81",
-  "spider-diagram-chromeos.html": "5381a1caeb7074075d752288ba69d6eaeb331067bb1b9027f893bd5203be41c5"
+  "spider-diagram-linux": "a993147cee5d13a44a128a450d3066c6350334d9b89d6360315093b653bdd4c6",
+  "spider-diagram-windows.cmd": "53509aad49925e8cf535d412fcb8480d5dff3dbaa26a15f9167f991403754bd8",
+  "spider-diagram-chromeos.html": "ab4c56c794beb34636d86f86944516ba6a9c57cb7653943a05391e1e58db97a3"
  }
 }

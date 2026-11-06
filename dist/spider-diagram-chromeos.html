@@ -378,7 +378,7 @@
         <div class="menu-sec">
           <div class="menu-title">Layout</div>
           <label class="check" title="Re-arrange the diagram automatically after you add, edit, move, collapse or delete a bubble"><input type="checkbox" id="sAuto"> Auto-tidy</label>
-          <p class="menu-note">Keeps bubbles evenly spaced, clockwise in the order you made them.</p>
+          <p class="menu-note">Keeps bubbles evenly spaced, clockwise in the order you made them (ideas with links turn to face what they link to).</p>
           <div class="menu-row">
             <button id="bCollapseMains" title="Fold every main idea down to its own bubble">Fold main ideas</button>
             <button id="bCollapseAll" title="Fold every branch, leaving just the sections">Fold branches</button>
@@ -389,6 +389,7 @@
           <div class="menu-title">Style</div>
           <label class="check" title="Bubbles that have branches are bold, tinted and outlined more heavily"><input type="checkbox" id="sEmph"> Highlight sections</label>
           <label class="check" title="Each branch's colour fades to a soft pastel towards its ends"><input type="checkbox" id="sFade"> Fade colours along branches</label>
+          <label class="check" title="Links with the same label share a colour, so they're easy to pick out together. Otherwise each link shades from one bubble's colour to the other's"><input type="checkbox" id="sLinkLabels"> Colour links by label</label>
           <div class="menu-row">
             <label>Bubbles <select id="sWrap" title="How wide bubbles get before text wraps onto a new line"><option value="narrow">Narrow</option><option value="medium">Medium</option><option value="wide">Wide</option><option value="off">No wrapping</option></select></label>
             <label>Lines <select id="sLines" title="Connector style"><option value="curved">Curved</option><option value="straight">Straight</option></select></label>
@@ -501,7 +502,7 @@
             <button data-v="thick" title="Thick"><svg class="ln" viewBox="0 0 36 12" aria-hidden="true"><path d="M3 6H33" style="stroke-width:4.5"/></svg></button></div>
           <div class="menu-row">
             <button id="lineBranch" title="Give every line in this branch the same look">Apply to whole branch</button>
-            <button id="lineReset" title="Back to the normal look (a link also goes back to its label's colour)">Reset</button>
+            <button id="lineReset" title="Back to the normal look (a link also goes back to its usual colour)">Reset</button>
             <button id="lineLabel" title="Write a short label on this link, e.g. &quot;worked for&quot; (or double-click the link)">Label…</button>
             <button id="lineDelete" title="Delete this link (Delete)"><svg class="ic" aria-hidden="true"><use href="#i-trash"/></svg> Delete link</button>
           </div>
@@ -555,6 +556,11 @@
 <!-- What each version changed, newest first: release.py adds an entry, and the menu above shows them. -->
 <script id="changelog" type="application/json">
 [
+ {
+  "version": "2026.11.06.1520",
+  "summary": "Links are much tidier: they shade between their bubbles' colours, find their way round bubbles, and ideas turn to face what they link to.",
+  "notes": "Links now shade from one bubble's colour to the other's (turn on \"Colour links by label\" in the Diagram menu to colour them by label instead). Tidying leaves room for links and their labels, turns linked ideas within a branch to face what they link to (a main idea's own branches keep their order), and moves bubbles out of a link's way. Links can attach off-centre so they don't land on top of a branch line, arrows meet their bubbles square on, and labels find a clear spot near the middle of their link. Pictures have rounded corners again."
+ },
  {
   "version": "2026.11.04.1629",
   "summary": "URGENT update: please install this now, so Spider Diagram keeps getting updates from its new home on GitHub.",
@@ -1093,7 +1099,7 @@ let doc, sel = 0, view = { x: 0, y: 0, k: 1 }, geom = {}, kidCount = {}, hidden 
 let undoStack = [], redoStack = [], dropTarget = null, drag = null, editing = null, lastDown = { t: 0 };
 let fileHandle = null, fileName = null, dirty = false, storeWarned = false;
 
-const defaults = () => ({ emphasis: true, fade: true, lines: 'curved', wrap: 'medium', autoTidy: true });
+const defaults = () => ({ emphasis: true, fade: true, labelColours: false, lines: 'curved', wrap: 'medium', autoTidy: true });
 const WRAP = { narrow: 0.7, medium: 1, wide: 1.5, off: Infinity };
 const blank = () => ({ nextId: 1, settings: defaults(), links: {}, nodes: { 0: { id: 0, text: 'Main idea', x: 0, y: 0, parent: null, kind: 'main', color: ROOT_FILL } } });
 /* ---------- the .spider file format, and upgrading older files ----------
@@ -1201,6 +1207,7 @@ function normalize(d) {
     settings: {
       emphasis: s.emphasis !== false,
       fade: s.fade !== false,
+      labelColours: s.labelColours === true,
       lines: s.lines === 'straight' ? 'straight' : 'curved',
       wrap: ['narrow', 'medium', 'wide', 'off'].includes(s.wrap) ? s.wrap : 'medium',
       autoTidy: s.autoTidy === true,
@@ -1367,6 +1374,25 @@ function mix(hex, t, target) {
   return `rgb(${f(0)},${f(1)},${f(2)})`;
 }
 // A softer, paler version of a colour: t = 0 gives the colour itself, 1 the full pastel.
+// The colour a share t of the way from hex a to hex b round the colour wheel (in OKLCH, the short way
+// round), so the colours in between stay as bright as the ends instead of going muddy.
+function blend(a, b, t) {
+  const lin = v => (v /= 255) <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+  const lch = hex => {
+    const [r, g, bl] = rgb(hex).map(lin);
+    const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * bl), m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * bl), s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * bl);
+    const L = 0.2104542553 * l + 0.793617785 * m - 0.0040720468 * s, A = 1.9779984951 * l - 2.428592205 * m + 0.4505937099 * s, B = 0.0259040371 * l + 0.7827717662 * m - 0.808675766 * s;
+    return [L, Math.hypot(A, B), Math.atan2(B, A)];
+  };
+  const [L1, C1, H1] = lch(a), [L2, C2, H2] = lch(b);
+  let dh = H2 - H1; dh = Math.atan2(Math.sin(dh), Math.cos(dh));
+  const hh = (C1 < 0.02 ? H2 : C2 < 0.02 ? H1 : H1 + dh * t), L = L1 + (L2 - L1) * t, C = C1 + (C2 - C1) * t;   // a grey end takes the other's hue
+  const A = C * Math.cos(hh), B = C * Math.sin(hh);
+  const l = (L + 0.3963377774 * A + 0.2158037573 * B) ** 3, m = (L - 0.1055613458 * A - 0.0638541728 * B) ** 3, s = (L - 0.0894841775 * A - 1.291485548 * B) ** 3;
+  const out = [4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s, -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s, -0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s]
+    .map(v => Math.round(255 * Math.min(1, Math.max(0, v <= 0.0031308 ? 12.92 * v : 1.055 * v ** (1 / 2.4) - 0.055))));
+  return '#' + out.map(v => v.toString(16).padStart(2, '0')).join('');
+}
 function pastel(hex, t) {
   let [r, g, b] = rgb(hex).map(v => v / 255);
   const mx = Math.max(r, g, b), mn = Math.min(r, g, b), l = (mx + mn) / 2, dd = mx - mn;
@@ -1443,35 +1469,71 @@ function bowCurve(a, b, bow) {
 }
 // A link is drawn like the branch lines: an S-curve that leaves and arrives along the main direction
 // (so it meets each bubble square on, and an arrowhead points straight into it), or straight, per the
-// diagram's line setting. If that runs behind another bubble, or along a link already placed (`taken`:
-// points along them), it tries the S the other way round, then arcs bowing further and further out.
+// diagram's line setting. It's aimed at the middle of each bubble, or towards either end of a long one,
+// so it can come in beside a branch line rather than on top of it. Of all those, and the S the other way
+// round, turning nearer one end (as branch lines do), and arcs bowing further and further out, it takes
+// the one that runs behind the fewest bubbles, then along the fewest other lines: links already placed
+// (`taken`) and branch lines (`trees`), especially those of the two bubbles it joins (`own`), where
+// it would look like part of the branch. Each of those is a function telling whether a point is near one.
 // `at` is how far along it turns: halfway, or nearer one end to get past something.
 function sCurve(a, b, across, at = 0.5) {
   if (across) { const mx = a.x + (b.x - a.x) * at; return [a, { x: mx, y: a.y }, { x: mx, y: b.y }, b]; }
   const my = a.y + (b.y - a.y) * at; return [a, { x: a.x, y: my }, { x: b.x, y: my }, b];
 }
-function routeLink(p, n, others, taken = [], line = LINE_DEFAULTS.link) {
+function routeLink(p, n, others, taken = () => false, line = LINE_DEFAULTS.link, own = () => false, trees = () => false) {
   const a = { x: p.x, y: p.y }, b = { x: n.x, y: n.y }, wide = Math.abs(b.x - a.x) >= Math.abs(b.y - a.y);
-  const options = doc.settings.lines === 'straight' ? [[aimArrows(bowCurve(a, b, 0), p, n, line), 0]]
-    : [[sCurve(a, b, wide), 0], [sCurve(a, b, !wide), 3]];
+  // Where a link can aim on a bubble: its middle, or partway to either end of a long one.
+  const aims = bub => {
+    const g = geom[bub.id] || measure(bub), long = Math.abs(g.w - g.h) / 2 * 0.6, out = [{ x: bub.x, y: bub.y, off: 0 }];
+    if (long > 8) for (const s of [-1, 1]) out.push(g.w > g.h ? { x: bub.x + s * long, y: bub.y, off: 3 } : { x: bub.x, y: bub.y + s * long, off: 3 });
+    return out;
+  };
+  const options = doc.settings.lines === 'straight' ? [[aimArrows(bowCurve(a, b, 0), p, n, line), 0]] : [];
+  if (doc.settings.lines !== 'straight') for (const u of aims(p)) for (const v of aims(n)) {
+    const w = Math.abs(v.x - u.x) >= Math.abs(v.y - u.y);
+    options.push([sCurve(u, v, w), u.off + v.off], [sCurve(u, v, !w), 3 + u.off + v.off]);
+    for (const at of [0.2, 0.8]) options.push([sCurve(u, v, w, at), 4 + u.off + v.off], [sCurve(u, v, !w, at), 5 + u.off + v.off]);
+  }
   for (const bow of [0.14, -0.14, 0.3, -0.3, 0.5, -0.5, 0.8, -0.8, 1.1, -1.1]) options.push([aimArrows(bowCurve(a, b, bow), p, n, line), 6 + Math.abs(bow) * 10]);
+  // An arrowhead has to point into its bubble: how far an end's line is from meeting the edge square
+  // on (0 square, 1 running along it), at the end of P nearest end (0 or 1) on bubble bub.
+  const atEnd = line.arrow === 'end' || line.arrow === 'both', atStart = line.arrow === 'start' || line.arrow === 'both';
+  const glance = (P, bub, end) => {
+    const t = crossing(P, q => outlineDist(bub, q.x, q.y) - 2, end, 1 - end), q = bezAt(P, t), r = bezAt(P, end ? Math.max(0, t - 0.02) : Math.min(1, t + 0.02));
+    const dx = q.x - r.x, dy = q.y - r.y, d = Math.hypot(dx, dy) || 1, e = 0.5;
+    const nx = outlineDist(bub, q.x + e, q.y) - outlineDist(bub, q.x - e, q.y), ny = outlineDist(bub, q.x, q.y + e) - outlineDist(bub, q.x, q.y - e), nl = Math.hypot(nx, ny) || 1;
+    return 1 - Math.abs(dx * nx + dy * ny) / (d * nl);
+  };
   let best = null, score = Infinity;
   for (const [P, cost] of options) {
-    let hits = 0, near = 0;
-    for (let i = 2; i < 30; i++) {
-      const q = bezAt(P, i / 31);
+    let sc = cost;
+    if (atEnd) sc += Math.max(0, glance(P, n, 1) - 0.12) * 1500;   // more than about 30° off square
+    if (atStart) sc += Math.max(0, glance(P, p, 0) - 0.12) * 1500;
+    for (let i = 3; i < 60 && sc < score; i++) {
+      const q = bezAt(P, i / 62);
       for (const o of others) {
         const g = geom[o.id];
-        if (Math.abs(q.x - o.x) < g.w / 2 + 10 && Math.abs(q.y - o.y) < g.h / 2 + 10 && outlineDist(o, q.x, q.y) < 8) { hits++; break; }
+        if (Math.abs(q.x - o.x) < g.w / 2 + 10 && Math.abs(q.y - o.y) < g.h / 2 + 10 && outlineDist(o, q.x, q.y) < 8) { sc += 500; break; }
       }
-      // Links sharing a bubble overlap underneath it, where nobody sees them: that doesn't count.
-      const hiddenEnd = outlineDist(p, q.x, q.y) < 6 || outlineDist(n, q.x, q.y) < 6;
-      if (!hiddenEnd && taken.some(t => Math.abs(t.x - q.x) < 14 && Math.abs(t.y - q.y) < 14)) near++;
+      // Lines meeting under a bubble, where nobody sees them, don't count.
+      if (outlineDist(p, q.x, q.y) < 6 || outlineDist(n, q.x, q.y) < 6) continue;
+      if (taken(q, 14) || own(q, 12)) sc += 60;   // running along another link hides it: worse than grazing a bubble
+      else if (trees(q, 10)) sc += 20;            // crossing a branch line is fine; running along one isn't
     }
-    const sc = hits * 1000 + near * 120 + cost;   // running along another link hides it: worse than grazing a bubble
     if (sc < score) { score = sc; best = P; }
   }
   return best;
+}
+// A quick way to ask whether a point is near any of a lot of points (bucketed into a grid): nearAny(pts)
+// gives a function (q, r) telling whether q is within r of one of them.
+function nearAny(pts, cell = 16) {
+  const grid = new Map(), key = (i, j) => i * 100003 + j;
+  for (const q of pts) { const k = key(Math.floor(q.x / cell), Math.floor(q.y / cell)); (grid.get(k) || grid.set(k, []).get(k)).push(q); }
+  return (q, r) => {
+    const i0 = Math.floor((q.x - r) / cell), i1 = Math.floor((q.x + r) / cell), j0 = Math.floor((q.y - r) / cell), j1 = Math.floor((q.y + r) / cell);
+    for (let i = i0; i <= i1; i++) for (let j = j0; j <= j1; j++) for (const t of grid.get(key(i, j)) || []) if (Math.abs(t.x - q.x) < r && Math.abs(t.y - q.y) < r) return true;
+    return false;
+  };
 }
 // (For straight links and the fallback arcs.) An arrow must point at its bubble, square onto its edge: aim at the nearest point of the bubble's middle
 // line (its centre, for a round one), so a link reaching a wide bubble from above comes straight down
@@ -1583,7 +1645,7 @@ function drawLine(p, n, line, color, base, opts) {
   const w = base * WIDTH_FACTOR[line.width], atEnd = line.arrow === 'end' || line.arrow === 'both', atStart = line.arrow === 'start' || line.arrow === 'both';
   const a = { x: p.x, y: p.y }, b = { x: n.x, y: n.y };
   let P;
-  if (link) P = curve || routeLink(p, n, others, [], line);
+  if (link) P = curve || routeLink(p, n, others, undefined, line);
   else P = curve || branchCurve(n, []);
   const trimA = link || atStart || geom[p.id]?.shape === 'text', trimB = link || atEnd || geom[n.id]?.shape === 'text', gap = link ? 3 : 2;
   const t0 = trimA ? crossing(P, q => outlineDist(p, q.x, q.y) - gap, 0, 1) : 0;
@@ -1672,11 +1734,20 @@ function scene(ui, theme = appTheme) {
       { curve: branches.get(n.id), ui, hit: `data-edge="${n.id}"` }) + (fadeLine ? '</g>' : '');
   }
   const taken = [];
+  // Points along each bubble's branch lines (the one to it, and the ones from it), so a link doesn't
+  // arrive along one of them.
+  const treeAt = new Map(), treePts = [];
+  for (const [id, P] of branches) {
+    const pts = Array.from({ length: 31 }, (_, i) => bezAt(P, i / 30));
+    treePts.push(...pts);
+    for (const end of [id, N(id).parent]) treeAt.set(end, [...treeAt.get(end) || [], ...pts]);
+  }
+  const nearTree = nearAny(treePts);
   linkCurves = []; linkLabels = {};
   // With a linked bubble selected, links that don't touch it fade back, so its own connections stand out.
   // (While a tag is highlighted, that decides instead: links touching a tagged bubble stay, whatever's selected.)
   const focus = ui && !focusTag && sel != null && selLink == null && N(sel) ? visibleOf(sel) : null;
-  // Labelled links are coloured by their label: each different label takes the next rainbow colour, in
+  // With "Colour links by label", each different label takes the next rainbow colour, in
   // the order the labels first appeared, so every "Created" link matches. A colour picked by hand wins.
   const labelColor = {};
   for (const l of Object.values(doc.links).sort((a, b) => a.id - b.id)) {
@@ -1688,20 +1759,32 @@ function scene(ui, theme = appTheme) {
   const placed = [], boxes = ns.map(n => { const g = geom[n.id]; return { x: n.x, y: n.y, w: g.w, h: g.h }; });
   const overlap = (a, b, pad) => Math.max(0, Math.min(a.x + a.w / 2, b.x + b.w / 2) - Math.max(a.x - a.w / 2, b.x - b.w / 2) + pad)
     * Math.max(0, Math.min(a.y + a.h / 2, b.y + b.h / 2) - Math.max(a.y - a.h / 2, b.y - b.h / 2) + pad);
-  // Where along its link a label goes: the middle if that's clear, otherwise the nearest spot along the
-  // link that doesn't cover another label, a bubble, or any other line (a label sitting on a crossing
-  // hides the other line and makes it unclear which link it belongs to). `ink` is points along every
-  // line, filled in once all the links are routed.
+  // Points along every line, filled in once all the links are routed: a label sitting on a crossing hides
+  // the other line and makes it unclear which link it belongs to.
   const ink = [];
-  const spotFor = (curve, w, h, own) => {
+  // Where a label goes, and how it's wrapped: `shapes` are ways to wrap it ({ lines, w, h }, its usual
+  // width first). It tries each spot along the link (the middle first), each wrapping, and shifted a
+  // little across the link or sideways (always still on the link), and takes the one covering the
+  // least: covering a bubble is worst, then other labels, then other lines, then lines just past its
+  // edge (so it isn't squeezed up against one).
+  const spotFor = (curve, shapes, own) => {
     let best = null, bestCost = Infinity;
-    for (let k = 0; k <= 18; k++) {
-      const t = 0.5 + (k % 2 ? 1 : -1) * Math.ceil(k / 2) * 0.04, q = bezAt(curve, t), r = { x: q.x, y: q.y, w, h };
-      let lines = 0;
-      for (const p of ink) if (p.link !== own && Math.abs(p.x - r.x) < w / 2 + 3 && Math.abs(p.y - r.y) < h / 2 + 3) lines++;
-      const cost = placed.reduce((c, o) => c + overlap(r, o, 6) * 3, 0) + boxes.reduce((c, o) => c + overlap(r, o, 4), 0) + lines * 60 + Math.abs(t - 0.5);
-      if (cost < bestCost) { bestCost = cost; best = r; }
-      if (cost < 1) break;
+    for (let k = 0; k <= 30; k++) {
+      const t = 0.5 + (k % 2 ? 1 : -1) * Math.ceil(k / 2) * 0.027, q = bezAt(curve, t);
+      const d = bezAt(curve, Math.min(1, t + 0.01)), e = bezAt(curve, Math.max(0, t - 0.01)), len = Math.hypot(d.x - e.x, d.y - e.y) || 1;
+      const nx = -(d.y - e.y) / len, ny = (d.x - e.x) / len;   // across the link
+      for (const [si, shape] of shapes.entries()) for (const [ax, ay] of [[0, 0], [0.12, 0], [-0.12, 0], [0, 0.25], [0, -0.25], [0.3, 0], [-0.3, 0]]) {
+        const r = { x: q.x + nx * ay * shape.h + ax * shape.w, y: q.y + ny * ay * shape.h, w: shape.w, h: shape.h, lines: shape.lines };
+        let under = 0, close = 0;
+        for (const p of ink) if (p.link !== own) {
+          const ox = Math.abs(p.x - r.x) - r.w / 2, oy = Math.abs(p.y - r.y) - r.h / 2;
+          if (ox < 3 && oy < 3) under++; else if (ox < 10 && oy < 10) close++;
+        }
+        const cost = placed.reduce((c, o) => c + overlap(r, o, 6) * 3, 0) + boxes.reduce((c, o) => c + overlap(r, o, 8) * 50, 0) + under * 60 + close * 4
+          + Math.abs(t - 0.5) * 20 + si * 30 + (Math.abs(ax) + Math.abs(ay)) * 200;   // the further off centre, the more it costs
+        if (cost < bestCost) { bestCost = cost; best = r; }
+      }
+      if (bestCost < 1) break;
     }
     placed.push(best);
     return best;
@@ -1711,28 +1794,41 @@ function scene(ui, theme = appTheme) {
     const a = visibleOf(l.from), b = visibleOf(l.to);
     if (a === b) continue;
     const others = ns.filter(o => o.id !== a && o.id !== b);
-    const curve = routeLink(N(a), N(b), others, taken, { ...LINE_DEFAULTS.link, ...cleanLine(l) });
+    const curve = routeLink(N(a), N(b), others, nearAny(taken), { ...LINE_DEFAULTS.link, ...cleanLine(l) }, nearAny([...treeAt.get(a) || [], ...treeAt.get(b) || []]), nearTree);
     for (let i = 0; i <= 30; i++) taken.push(bezAt(curve, i / 30));   // later links steer clear of this one
     linkCurves.push(curve);
+    // A colour picked by hand wins. Otherwise the link shades from one bubble's colour to the other's,
+    // or (with "Colour links by label") takes its label's colour.
     const auto = l.label && labelColor[l.label.toLowerCase()];
-    const lc = l.color ? T.c(l.color) : auto ? T.c(auto) : T.link;
+    let lc = l.color ? T.c(l.color) : doc.settings.labelColours ? (auto ? T.c(auto) : T.link) : null, tagColor = lc;
+    if (!lc) {   // (its label takes the colour where it sits: see below)
+      const A = N(a), B = N(b), id = `link${gradSeq++}`, ca = T.c(shadeOf(A)), cb = T.c(shadeOf(B));
+      let stops = '';
+      for (let k = 0; k <= 6; k++) stops += `<stop offset="${k / 6}" stop-color="${blend(ca, cb, k / 6)}"/>`;
+      defs += `<linearGradient id="${id}" gradientUnits="userSpaceOnUse" x1="${A.x}" y1="${A.y}" x2="${B.x}" y2="${B.y}">${stops}</linearGradient>`;
+      lc = `url(#${id})`; tagColor = q => { const dx = B.x - A.x, dy = B.y - A.y; return blend(ca, cb, Math.min(1, Math.max(0, ((q.x - A.x) * dx + (q.y - A.y) * dy) / (dx * dx + dy * dy || 1)))); };
+    }
     const dim = (focusing && a !== focus && b !== focus) || (focusTag && !tagsOf(N(a)).includes(focusTag) && !tagsOf(N(b)).includes(focusTag));
     if (dim) edges += '<g opacity=".15">';
     edges += drawLine(N(a), N(b), { ...LINE_DEFAULTS.link, ...cleanLine(l) }, lc, 2.5,
       { link: true, curve, others, ui, hit: `data-link="${l.id}"`, selected: ui && selLink === l.id, selColor: T.sel });
     if (dim) edges += '</g>';
     for (let i = 0; i <= 60; i++) ink.push({ ...bezAt(curve, i / 60), link: l.id });
-    jobs.push({ l, curve, lc, dim });
+    jobs.push({ l, curve, lc: tagColor, dim });
   }
   // Tree lines count as ink too (as drawn: straight, or the S-curve).
   for (const P of branches.values()) for (let i = 0; i <= 30; i++) ink.push({ ...bezAt(P, i / 30), link: null });
-  for (const { l, curve, lc, dim } of jobs) {
+  for (let { l, curve, lc, dim } of jobs) {
     // The label sits on its link, on a little tag that hides the line behind its text.
     if (l.label && !(ui && labelEdit === l.id)) {
       const fs = 12, lh = 15;
       mctx.font = `600 ${fs}px ${FONT}`;
-      const lines = wrapText(l.label, 170), tw = Math.max(...lines.map(t => mctx.measureText(t).width));
-      const w = Math.ceil(tw) + 16, h = lines.length * lh + 8, m = spotFor(curve, w, h, l.id), x = m.x - w / 2, y = m.y - h / 2;
+      const shapes = [170, 110].map(max => {   // its usual wrapping, or narrower to fit somewhere tight
+        const lines = wrapText(l.label, max), tw = Math.max(...lines.map(t => mctx.measureText(t).width));
+        return { lines, w: Math.ceil(tw) + 16, h: lines.length * lh + 8 };
+      });
+      const m = spotFor(curve, shapes, l.id), { lines, w, h } = m, x = m.x - w / 2, y = m.y - h / 2;
+      if (typeof lc === 'function') lc = lc(m);   // a shaded link's colour at the label's spot, as its line has there
       linkLabels[l.id] = { x: m.x, y: m.y, w, h };
       labels += `<g data-link="${l.id}" style="cursor:pointer"${dim ? ' opacity=".15"' : ''}><rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${Math.min(h / 2, 10)}" fill="${T.bg}" stroke="${ui && selLink === l.id ? T.sel : lc}" stroke-width="${ui && selLink === l.id ? 2 : 1.2}"/>`
         + lines.map((t, i) => `<text x="${m.x}" y="${y + 4 + lh * (i + 0.5)}" text-anchor="middle" dominant-baseline="central" font-family="${FONT}" font-size="${fs}" font-weight="600" fill="${lc}">${esc(t)}</text>`).join('') + '</g>';
@@ -1766,8 +1862,9 @@ function scene(ui, theme = appTheme) {
     body += shapeAt(0, 0, fill, stroke, sw);
     if (n.img) {
       const ix = n.x - g.iw / 2, iy = n.y + g.imgY;
-      body += `<clipPath id="clip${n.id}"><rect x="${ix}" y="${iy}" width="${g.iw}" height="${g.ih}" rx="6"/></clipPath>`
-        + `<image href="${n.img.src}" x="${ix}" y="${iy}" width="${g.iw}" height="${g.ih}" clip-path="url(#clip${n.id})" preserveAspectRatio="xMidYMid slice"/>`;
+      const clip = `clip${gradSeq++}`;   // unique on the page: thumbnails draw the same bubbles, and the first id would win
+      body += `<clipPath id="${clip}"><rect x="${ix}" y="${iy}" width="${g.iw}" height="${g.ih}" rx="6"/></clipPath>`
+        + `<image href="${n.img.src}" x="${ix}" y="${iy}" width="${g.iw}" height="${g.ih}" clip-path="url(#${clip})" preserveAspectRatio="xMidYMid slice"/>`;
     }
     const y0 = n.y + g.ty - (g.lines.length - 1) * g.lh / 2;
     g.lines.forEach((l, i) => {
@@ -1950,7 +2047,7 @@ function removeSelected() {
   if (selLink != null) {
     const l = doc.links[selLink];
     if (l?.note) toast(`This link comes from [[${bubbleName(N(l.to))}]] in the notes of "${bubbleName(N(l.from))}", so it comes back unless you remove that`);
-    commit(); delete doc.links[selLink]; selLink = null; render(); return;
+    commit(); delete doc.links[selLink]; selLink = null; render(); autoTidy(); return;   // linked ideas may turn back
   }
   const s = sel != null && N(sel);
   if (!s) return;
@@ -2009,7 +2106,8 @@ function layout(pullFree = false) {
   const memo = {};
   // A collapsed branch is laid out as a single bubble; its hidden ideas move along with it afterwards.
   const folded = visible().filter(n => n.collapsed).map(n => [n.id, n.x, n.y]);
-  const order = id => N(id).collapsed ? [] : ordered(id);
+  const turned = new Map();   // ideas rearranged to face their links (see faceLinks)
+  const order = id => N(id).collapsed ? [] : turned.get(id) || ordered(id);
   const own = id => Math.max(1, (geom[id].w + 30) / 180);
   const weight = id => memo[id] ??= (order(id).length ? Math.max(order(id).reduce((s, k) => s + weight(k.id), 0), own(id)) : own(id));
   // Half-size of a bubble measured along direction m, and its full size across that direction.
@@ -2029,13 +2127,19 @@ function layout(pullFree = false) {
   }
   // Further out, a bubble's ideas fan out round it, facing away from where its own line comes in (dir),
   // clockwise in order, at most 140° wide.
-  const FAN = Math.PI * 140 / 180, STEP = Math.PI / 180;
-  const crowd = (a, ga, b, gb) => Math.abs(a.x - b.x) < (ga.w + gb.w) / 2 + 24 && Math.abs(a.y - b.y) < (ga.h + gb.h) / 2 + 18;
+  // Bubbles with links get more room round them, so links and their labels have space to run between
+  // the bubbles.
+  const FAN_PLAIN = Math.PI * 140 / 180, STEP = Math.PI / 180;
+  const linked = new Set(Object.values(doc.links).flatMap(l => [visibleOf(l.from), visibleOf(l.to)]));
+  const roomy = new Set([...linked].map(id => geom[id]));
+  const crowd = (a, ga, b, gb) => { const x = roomy.has(ga) || roomy.has(gb) ? 20 : 0; return Math.abs(a.x - b.x) < (ga.w + gb.w) / 2 + 24 + x && Math.abs(a.y - b.y) < (ga.h + gb.h) / 2 + 18 + x; };
   const linePts = (a, b) => { const P = plainCurve(a, b), out = []; for (let t = 1; t < 12; t++) out.push(bezAt(P, t / 12)); return out; };
   const under = (q, n, g) => Math.abs(q.x - n.x) < g.w / 2 + 8 && Math.abs(q.y - n.y) < g.h / 2 + 8;
   function fan(id, dir) {
     const ks = order(id), n = N(id), gp = geom[id];
     if (!ks.length) return;
+    const linkedHere = ks.some(k => subtree(k.id).some(i => linked.has(i)));
+    const FAN = FAN_PLAIN, SEP = linkedHere ? 45 : 35;
     const clear = (g, m) => along(gp, m) + along(g, m) + 45;   // close as it can get without touching
     // First a rough fan of just the ideas themselves, to aim each one: each as close round as it fits
     // beside the one before, then spread out evenly (about 35° apart), further out if they don't fit.
@@ -2053,7 +2157,7 @@ function layout(pullFree = false) {
       if (ms[ms.length - 1] <= FAN) break;
       dist = Math.max(dist, ...ks.map(k => clear(geom[k.id], dir))) * 1.12;
     }
-    const used = ms[ms.length - 1], want = Math.min(FAN, Math.max(used, (ks.length - 1) * 35 * STEP));
+    const used = ms[ms.length - 1], want = Math.min(FAN, Math.max(used, (ks.length - 1) * SEP * STEP));
     const extra = ks.length > 1 ? (want - used) / (ks.length - 1) : 0;
     // Lay out each idea's own branch, aimed that way, and keep its shape (bubbles and lines, from the idea).
     const shapes = ks.map((k, i) => {
@@ -2101,19 +2205,87 @@ function layout(pullFree = false) {
     // Then as comfortably spaced as the fan has room for (up to 35° apart), centred on dir.
     const room = Math.max(span(spots), want);
     let sep = 0;
-    for (const d of [35, 26, 18, 10]) { const t = pack(dir - want / 2, d * STEP); if (span(t) <= room + 1e-6) { sep = d * STEP; spots = t; break; } }
+    for (const d of [SEP, 35, 26, 18, 10].filter((d, i, a) => a.indexOf(d) === i && d <= SEP)) { const t = pack(dir - want / 2, d * STEP); if (span(t) <= room + 1e-6) { sep = d * STEP; spots = t; break; } }
     spots = pack(dir - span(spots) / 2, sep);
     spots.forEach((spot, i) => shapes[i].ids.forEach((id, j) => { N(id).x = spot.at[j].x; N(id).y = spot.at[j].y; }));
   }
-  for (const top of all().filter(isRoot)) if (order(top.id).length) place(top);   // every main idea and free bubble lays out its own tree
-  spread();
-  for (const top of all().filter(isRoot)) { makeRoom(top, order(top.id)); pullIn(top, order(top.id)); }
-  packMains();
-  const ms = mains();
-  if (ms.length > 1) gather(ms[0], ms.slice(1).map(m => ({ k: m, ids: subtree(m.id).filter(id => !hidden.has(id)) })), visible(), false, 60, true);
-  if (pullFree) relaxFree();
-  resolveOverlaps();
-  untangle();
+  function arrange(final = true) {   // (trying out orders, a quicker clean-up does)
+    for (const top of all().filter(isRoot)) if (order(top.id).length) place(top);   // every main idea and free bubble lays out its own tree
+    spread();
+    for (const top of all().filter(isRoot)) { makeRoom(top, order(top.id)); pullIn(top, order(top.id)); }
+    packMains();
+    const ms = mains();
+    if (ms.length > 1) gather(ms[0], ms.slice(1).map(m => ({ k: m, ids: subtree(m.id).filter(id => !hidden.has(id)) })), visible(), false, 60, true);
+    if (pullFree) relaxFree();
+    resolveOverlaps();
+    if (final) untangle(); else untangle(3, 400);
+  }
+  // Links matter more than keeping each fan in the order its ideas were made: where a bubble's ideas
+  // link elsewhere, it tries turning each linked idea to the side of its fan facing what it links to
+  // (ideas without links keep their places in between), lays everything out again, and keeps the new
+  // order only if the links come out shorter and crossing less.
+  const partners = new Map(), pairs = [];
+  for (const l of Object.values(doc.links)) {
+    const a = visibleOf(l.from), b = visibleOf(l.to);
+    if (a === b) continue;
+    pairs.push([a, b]);
+    partners.set(a, [...partners.get(a) || [], b]); partners.set(b, [...partners.get(b) || [], a]);
+  }
+  // How tangled the links are: their length, plus a lot for each crossing and each bubble one runs over
+  // (taking each link as it's first tried: the S-curve, or straight, from bubble to bubble).
+  const tangle = () => {
+    const ns = visible(), ccw = (a, b, c) => (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
+    const paths = pairs.map(([a, b]) => { const P = plainCurve(N(a), N(b)); return { a: N(a), b: N(b), pts: Array.from({ length: 17 }, (_, i) => bezAt(P, i / 16)) }; });
+    let t = 0;
+    paths.forEach(({ a, b, pts }, i) => {
+      t += Math.hypot(b.x - a.x, b.y - a.y);
+      for (const m of paths.slice(i + 1)) {
+        if ([m.a, m.b].includes(a) || [m.a, m.b].includes(b)) continue;
+        crossing: for (let j = 0; j < 16; j++) for (let k = 0; k < 16; k++) {
+          const p = pts[j], q = pts[j + 1], r = m.pts[k], u = m.pts[k + 1];
+          if (ccw(p, q, r) * ccw(p, q, u) < 0 && ccw(r, u, p) * ccw(r, u, q) < 0) { t += 400; break crossing; }
+        }
+      }
+      for (const o of ns) if (o !== a && o !== b) {
+        const g = geom[o.id];
+        for (let j = 0; j < 16; j++) if (segInBox(pts[j], pts[j + 1], o.x - g.w / 2 - 6, o.x + g.w / 2 + 6, o.y - g.h / 2 - 6, o.y + g.h / 2 + 6)) { t += 400; break; }
+      }
+    });
+    return t;
+  };
+  // The order of n's ideas with each linked one turned towards what it links to, or null if that's no change.
+  // (A main idea's own branches stay in order: swapping whole branches round would be confusing.)
+  const facing = n => {
+    const ks = order(n.id);
+    if (ks.length < 2 || isRoot(n)) return null;
+    const dir = Math.atan2(n.y - N(n.parent).y, n.x - N(n.parent).x), wrap = a => Math.atan2(Math.sin(a), Math.cos(a));
+    let any = false;
+    const want = ks.map((k, i) => {
+      const slot = -FAN_PLAIN / 2 + FAN_PLAIN * i / (ks.length - 1);
+      const mine = new Set(subtree(k.id).filter(id => !hidden.has(id)));
+      let sx = 0, sy = 0;
+      for (const id of mine) for (const o of partners.get(id) || []) if (!mine.has(o)) { const d = Math.hypot(N(o).x - n.x, N(o).y - n.y) || 1; sx += (N(o).x - n.x) / d; sy += (N(o).y - n.y) / d; }
+      if (!sx && !sy) return { k, i, at: slot };
+      any = true;
+      return { k, i, at: Math.max(-FAN_PLAIN / 2, Math.min(FAN_PLAIN / 2, wrap(Math.atan2(sy, sx) - dir))) };
+    });
+    const next = [...want].sort((a, b) => a.at - b.at || a.i - b.i).map(w => w.k);
+    return any && next.some((k, i) => k !== ks[i]) ? next : null;
+  };
+
+  arrange(!pairs.length);
+  if (pairs.length) {
+    const tries = visible().map(n => [n.id, facing(n)]).filter(([, next]) => next).slice(0, 12);
+    let best = tangle();
+    for (const [id, next] of tries) {
+      const was = turned.get(id);
+      turned.set(id, next); arrange(false);
+      const t = tangle();
+      if (t < best - 1) best = t;
+      else if (was) turned.set(id, was); else turned.delete(id);
+    }
+    arrange();   // the best one found, with links cleared
+  }
   for (const [id, x0, y0] of folded) {
     const dx = N(id).x - x0, dy = N(id).y - y0;
     for (const i of subtree(id).slice(1)) { N(i).x += dx; N(i).y += dy; }
@@ -2238,7 +2410,7 @@ function pullIn(top, ks) {
 // line runs from the centre to each group's first bubble (k), which must stay clear too. Furthest out
 // first, a few times over, as each one coming in can make room for another. GAP: the room kept round
 // each group's bubbles. `solid`: groups are whole trees, each kept to its own patch (the box round all
-// of it), so two main ideas' bubbles never mingle, and with room for their links.
+// of it), so two main ideas' bubbles never mingle.
 function gather(centre, groups, ns, joined, GAP = 30, solid = false) {
   if (groups.length < 2 && !joined) return;
   const ang = g => Math.atan2(g.k.y - centre.y, g.k.x - centre.x), dist = g => Math.hypot(g.k.x - centre.x, g.k.y - centre.y);
@@ -2272,25 +2444,39 @@ function gather(centre, groups, ns, joined, GAP = 30, solid = false) {
       }
       const myLines = solid ? [] : ids.filter(id => N(id).parent != null && mine.has(N(id).parent)).map(id => lineOf(N(id)));
       const theirLines = solid ? [] : others.filter(n => n.parent != null).map(lineOf);
-      // Whole trees also keep their links' way clear (as first tried, from bubble to bubble): links
-      // from this one mustn't run through other bubbles, and others' links mustn't run through it.
+      // Links need their way kept clear too (as first tried, from bubble to bubble), with room for their
+      // label in the middle: links moving with the group mustn't run through other bubbles or have their
+      // label crowd one, and others' links and labels mustn't run through it.
       const chain = (a, b) => { const P = plainCurve(a, b), pts = []; for (let t = 0; t <= 24; t++) pts.push(bezAt(P, t / 24)); return { pts, x0: Math.min(a.x, b.x), x1: Math.max(a.x, b.x), y0: Math.min(a.y, b.y), y1: Math.max(a.y, b.y) }; };
-      const ends = solid ? Object.values(doc.links).map(l => [N(visibleOf(l.from)), N(visibleOf(l.to))]).filter(([a, b]) => a !== b) : [];
-      const outLinks = ends.filter(([a, b]) => mine.has(a.id) !== mine.has(b.id)).map(([a, b]) => mine.has(a.id) ? [a, b] : [b, a]);
-      const theirLinks = ends.filter(([a, b]) => !mine.has(a.id) && !mine.has(b.id)).map(([a, b]) => ({ a, b, ...chain(a, b) }));
+      mctx.font = `600 12px ${FONT}`;
+      const links = Object.values(doc.links).map(l => {
+        const a = N(visibleOf(l.from)), b = N(visibleOf(l.to)), lines = l.label ? wrapText(l.label, 170) : [];
+        const tag = lines.length ? { w: Math.ceil(Math.max(...lines.map(t => mctx.measureText(t).width))) + 16, h: lines.length * 15 + 8 } : null;
+        return { a, b, tag, ina: mine.has(a.id), inb: mine.has(b.id) };
+      }).filter(l => l.a !== l.b);
+      const theirLinks = links.filter(l => !l.ina && !l.inb).map(l => ({ ...l, ...chain(l.a, l.b) }));
+      const myLinks = links.filter(l => l.ina || l.inb);
+      // Would a label of size t, centred on q, crowd bubble o (at o's spot shifted by (dx, dy))?
+      const onTag = (q, t, o, dx = 0, dy = 0) => Math.abs(q.x - o.x - dx) < (t.w + geom[o.id].w) / 2 + 8 && Math.abs(q.y - o.y - dy) < (t.h + geom[o.id].h) / 2 + 8;
+      const linksFit = (dx, dy) => {
+        for (const l of theirLinks) {
+          if (l.x1 > x0 + dx && l.x0 < x1 + dx && l.y1 > y0 + dy && l.y0 < y1 + dy) for (const id of ids) if (through(l, N(id), -dx, -dy)) return false;
+          if (l.tag) for (const id of ids) if (onTag(l.pts[12], l.tag, N(id), dx, dy)) return false;
+        }
+        for (const { a, b, tag, ina, inb } of myLinks) {
+          const l = chain({ x: a.x + (ina ? dx : 0), y: a.y + (ina ? dy : 0) }, { x: b.x + (inb ? dx : 0), y: b.y + (inb ? dy : 0) });
+          for (const o of others) if (o !== a && o !== b && (through(l, o) || tag && onTag(l.pts[12], tag, o))) return false;
+          if (ina !== inb) for (const id of ids) if (id !== a.id && id !== b.id && (through(l, N(id), -dx, -dy) || tag && onTag(l.pts[12], tag, N(id), dx, dy))) return false;
+        }
+        return true;
+      };
       // Would the group, moved by (dx, dy), crowd anything or have a line run through it (or run its own
       // lines through anything)?
       const fits = (dx, dy) => {
         const bx0 = x0 + dx - GAP, bx1 = x1 + dx + GAP, by0 = y0 + dy - GAP, by1 = y1 + dy + GAP, near = [];
         if (solid) {
           for (const b of blocks.values()) if (b.x1 > bx0 && b.x0 < bx1 && b.y1 > by0 && b.y0 < by1) return false;
-          for (const l of theirLinks) if (l.x1 > bx0 && l.x0 < bx1 && l.y1 > by0 && l.y0 < by1) for (const id of ids) if (through(l, N(id), -dx, -dy)) return false;
-          for (const [a, b] of outLinks) {
-            const l = chain({ x: a.x + dx, y: a.y + dy }, b);
-            for (const o of others) if (o !== b && through(l, o)) return false;
-            for (const id of ids) if (id !== a.id && through(l, N(id), -dx, -dy)) return false;
-          }
-          return true;
+          return linksFit(dx, dy);
         }
         for (const o of others) {
           const go = geom[o.id];
@@ -2300,6 +2486,7 @@ function gather(centre, groups, ns, joined, GAP = 30, solid = false) {
         }
         for (const l of myLines) for (const o of near) if (through(l, o, dx, dy)) return false;
         for (const l of theirLines) if (l.x1 > bx0 && l.x0 < bx1 && l.y1 > by0 && l.y0 < by1) for (const id of ids) if (through(l, N(id), -dx, -dy)) return false;
+        if (!linksFit(dx, dy)) return false;
         if (!joined) return true;
         const a = { x: centre.x, y: centre.y }, b = { x: k.x + dx, y: k.y + dy }, P = plainCurve(a, b), pts = [];
         for (let t = 0; t <= 24; t++) pts.push(bezAt(P, t / 24));
@@ -2498,12 +2685,13 @@ function setAllCollapsed(fold) {
   if (doc.settings.autoTidy) layout();
   render(); fit();
 }
-// Keep every branch line clear of the bubbles it doesn't join. Where a line runs under a bubble, try
-// moving either one (the bubble in the way, or the bubble the line leads to, each with whatever hangs
-// off it): swung round its parent, pushed further out, or slid a little in any direction. Keep the move
+// Keep every branch line and link clear of the bubbles it doesn't join. Where one runs under a bubble,
+// try moving the bubble in the way, or a bubble at the end of the line (each with whatever hangs off
+// it): swung round its parent, pushed further out, or slid a little in any direction. Keep the move
 // that clears the most without crowding other bubbles, adding crossings or changing the clockwise
-// order of a bubble's branches.
-function untangle(rounds = 8) {
+// order of a bubble's branches. Bubbles joined by a labelled link also move apart if the label
+// wouldn't fit between them. `budget` caps how many moves it tries.
+function untangle(rounds = 8, budget = 3000) {
   const ns = visible(), PAD = 10, GAP = 18;
   const lineOf = n => {
     const P = branchCurve(n, ns), pts = [];
@@ -2512,6 +2700,23 @@ function untangle(rounds = 8) {
     return { n, p: n.parent, pts, x0: Math.min(...xs), x1: Math.max(...xs), y0: Math.min(...ys), y1: Math.max(...ys) };
   };
   let lines;
+  // Links too, as first tried from bubble to bubble (if that way is clear, that's how they're drawn).
+  mctx.font = `600 12px ${FONT}`;
+  const links = Object.values(doc.links).map(l => {
+    const lines = l.label ? wrapText(l.label, 110) : [];   // a label at its narrowest
+    return [N(visibleOf(l.from)), N(visibleOf(l.to)), lines.length ? { w: Math.max(...lines.map(t => mctx.measureText(t).width)) + 16, h: lines.length * 15 + 8 } : null];
+  }).filter(([a, b]) => a !== b);
+  // Are a and b too close together for the label between them?
+  const short = (a, b, tag) => {
+    if (!tag) return false;
+    const ga = geom[a.id], gb = geom[b.id], sx = Math.abs(a.x - b.x) - (ga.w + gb.w) / 2, sy = Math.abs(a.y - b.y) - (ga.h + gb.h) / 2;
+    return sx >= sy ? sx < tag.w + 16 : sy < tag.h + 16;
+  };
+  const linkOf = (a, b) => {
+    const P = plainCurve(a, b), pts = [];
+    for (let i = 0; i <= 24; i++) pts.push(bezAt(P, i / 24));
+    return { pts, x0: Math.min(a.x, b.x), x1: Math.max(a.x, b.x), y0: Math.min(a.y, b.y), y1: Math.max(a.y, b.y) };
+  };
   // Does line l, shifted by (ox, oy), pass through bubble b (with a little clearance)? Each stretch of
   // the line is clipped to the bubble's box.
   const hits = (l, b, ox = 0, oy = 0) => {
@@ -2567,6 +2772,13 @@ function untangle(rounds = 8) {
     for (const m of otherLines) if (!meet(root, m) && crosses(root, m) && add(200)) return c;
     for (const m of inner) if (!meet(root, m) && crosses(root, m, v.x, v.y) && add(200)) return c;
     for (const l of inner) for (const m of otherLines) if (!meet(l, m) && crosses(l, m, -v.x, -v.y) && add(200)) return c;
+    for (const [a, b, tag] of links) {   // links running through bubbles, or too short for their label
+      const l = linkOf(a, b);
+      if (S.has(a.id) || S.has(b.id)) {
+        if (short(a, b, tag) && add(600)) return c;
+        for (const o of ns) if (o !== a && o !== b && hits(l, o) && add(600)) return c;
+      } else for (const id of ids) if (hits(l, N(id)) && add(600)) return c;
+    }
     return c;
   };
   // The clockwise order of a bubble's branches round it (as a loop, so it doesn't matter which comes first).
@@ -2590,18 +2802,22 @@ function untangle(rounds = 8) {
   const shift = (ids, dx, dy) => { for (const id of ids) { N(id).x += dx; N(id).y += dy; } };
   // A huge, crowded diagram could keep this busy for seconds: it gives up after a fixed amount of work
   // (always the same, so tidying the same diagram always gives the same result).
-  let budget = 3000;
   for (let round = 0; round < rounds && budget > 0; round++) {
     lines = new Map(ns.filter(n => !isRoot(n)).map(n => [n.id, lineOf(n)]));   // afresh: moving one bubble can flip another's S
+    // Each clash: what could move to sort it out (the bubble in the way first), and whether it's still there.
     const clashes = [];
-    for (const l of lines.values()) for (const b of ns) if (b.id !== l.n.id && b.id !== l.p && hits(l, b)) clashes.push([b, l.n]);
+    for (const l of lines.values()) for (const b of ns) if (b.id !== l.n.id && b.id !== l.p && hits(l, b)) clashes.push({ movers: [b, l.n], still: () => hits(lines.get(l.n.id), b) });
+    for (const [a, b, tag] of links) {
+      for (const o of ns) if (o !== a && o !== b && hits(linkOf(a, b), o)) clashes.push({ movers: [o, b, a], still: () => hits(linkOf(a, b), o) });
+      if (short(a, b, tag)) clashes.push({ movers: [b, a], still: () => short(a, b, tag) });
+    }
     if (!clashes.length) break;
     let moved = false;
-    for (const [b, n] of clashes) {
+    for (const { movers, still } of clashes) {
       if (budget <= 0) break;
-      if (!hits(lines.get(n.id), b)) continue;   // an earlier move already sorted this one out
+      if (!still()) continue;   // an earlier move already sorted this one out
       let best = null;
-      for (const s of [b, n]) {
+      for (const s of movers) {
         if (isRoot(s)) continue;
         const ids = subtree(s.id).filter(id => !hidden.has(id));
         if (ids.length > 30) continue;   // moving a whole big branch would upset the layout more than it helps
@@ -2796,7 +3012,7 @@ function finishLink(to) {
   const id = doc.nextId++;
   doc.links[id] = { id, from, to };
   selLink = id; sel = null;
-  render();
+  render(); autoTidy();   // its ends may turn to face each other
   toast('Linked. Use the Line menu to change how it looks');
 }
 
@@ -3980,6 +4196,7 @@ function syncToolbar() {
   $('#iSize').value = s?.imgSize || 'M';
   $('#sEmph').checked = doc.settings.emphasis;
   $('#sFade').checked = doc.settings.fade;
+  $('#sLinkLabels').checked = doc.settings.labelColours;
   $('#sAuto').checked = doc.settings.autoTidy;
   $('#sLines').value = doc.settings.lines;
   $('#sWrap').value = doc.settings.wrap;
@@ -4053,6 +4270,7 @@ on('#sAuto', 'change', e => {
 });
 on('#sEmph', 'change', e => { commit(); doc.settings.emphasis = e.target.checked; render(); autoTidy(); });
 on('#sFade', 'change', e => { commit(); doc.settings.fade = e.target.checked; render(); });
+on('#sLinkLabels', 'change', e => { commit(); doc.settings.labelColours = e.target.checked; render(); });
 on('#sWrap', 'change', e => { commit(); doc.settings.wrap = e.target.value; render(); autoTidy(); });
 on('#sLines', 'change', e => { commit(); doc.settings.lines = e.target.value; render(); });
 // Keep keyboard shortcuts working after using the toolbar.
@@ -4149,8 +4367,9 @@ function flushNotes() {
   if ((n.notes || undefined) === next) return;
   if (!notesCommitted) { commit(); notesCommitted = true; } else markDirty();
   if (next) n.notes = next; else delete n.notes;
-  syncNoteLinks(n);
+  const relinked = syncNoteLinks(n);
   render();
+  if (relinked) autoTidy();
 }
 // The diagram is being replaced (undo, open, new): forget unsaved typing instead of writing it into the new one.
 function dropPendingNotes() { clearTimeout(notesTimer); notesTimer = null; notesFor = null; }
@@ -4634,14 +4853,18 @@ function findBubble(name) {
 }
 const wikiNames = html => [...new DOMParser().parseFromString(`<body>${html || ''}</body>`, 'text/html').body.textContent.matchAll(WIKI)].map(m => m[1].trim());
 // Make the diagram's links from n match the [[links]] in its notes.
+// Returns whether any links came or went.
 function syncNoteLinks(n) {
   const want = new Set(wikiNames(n.notes).map(findBubble).filter(t => t && t.id !== n.id).map(t => t.id));
   const from = Object.values(doc.links).filter(l => l.from === n.id);
-  for (const l of from) if (l.note && !want.has(l.to)) delete doc.links[l.id];
+  let changed = false;
+  for (const l of from) if (l.note && !want.has(l.to)) { delete doc.links[l.id]; changed = true; }
   for (const to of want) if (!from.some(l => l.to === to && doc.links[l.id])) {
     const id = doc.nextId++;
     doc.links[id] = { id, from: n.id, to, note: true };
+    changed = true;
   }
+  return changed;
 }
 // Renaming a bubble updates [[Old name]] wherever it's written, so links don't break.
 function renameWikiRefs(oldText, newText) {
@@ -4799,7 +5022,7 @@ $('#notesLinks').addEventListener('focusout', e => {
       toast(`Made a new bubble "${name}"`);
     }
     if (to.id !== here) { const id = doc.nextId++; doc.links[id] = { id, from: here, to: to.id }; }
-    render();
+    render(); autoTidy();
   }
   setTimeout(() => { if (!$('#notesLinks').contains(document.activeElement)) showNoteLinks(N(+$('#notesLinks').dataset.for), true); });
 });
@@ -5113,7 +5336,7 @@ svg.addEventListener('dblclick', e => {
 
 /* ---------- version, installing and updates ---------- */
 // build.py stamps these into each release; the source copy says 'dev' and never looks for updates.
-const APP_VERSION = '2026.11.04.1629', APP_UPDATE_URL = 'https://raw.githubusercontent.com/WMBanner/spider-diagram/main/dist/';
+const APP_VERSION = '2026.11.06.1520', APP_UPDATE_URL = 'https://raw.githubusercontent.com/WMBanner/spider-diagram/main/dist/';
 let aboutApp = { version: APP_VERSION, updates: false, canInstall: false, installed: false };
 const INSTALL_STORE = 'spider-diagram:no-install-offer';
 async function loadAbout() {
@@ -5388,7 +5611,7 @@ const TUT_STEPS = [
     },
     text: () => `<p>Click on a link to select it. Then use the ${ui('Line')} menu to give it arrows or a different style, or pick a colour for it.</p>
       <p>Links can say what the connection is, too: <b>double-click</b> a link (or select it and just start typing) to give it a label like <i>worked for</i>.</p>
-      <p class="tip"><kbd>${DEL_KEY}</kbd> deletes a selected link.</p>`,
+      <p class="tip">Links shade from one bubble's colour to the other's. To see links with the same label in one colour, turn on ${ui('Colour links by label')} in the ${ui('Diagram')} menu. <kbd>${DEL_KEY}</kbd> deletes a selected link.</p>`,
     done: () => Object.values(doc.links).some(l => l.style || l.arrow || l.width || l.color || l.label) },
   { title: 'More than one main idea', target: '#bMain',
     text: () => `<p>One file can hold several main ideas, for example every topic in a unit. Open ${ui('Insert')}, choose <b>Main idea</b>, type a name and press <kbd>Enter</kbd>.</p>
